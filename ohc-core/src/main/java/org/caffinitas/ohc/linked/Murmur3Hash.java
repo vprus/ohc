@@ -15,6 +15,9 @@
  */
 package org.caffinitas.ohc.linked;
 
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
+
 final class Murmur3Hash extends Hasher
 {
     long hash(byte[] array)
@@ -125,10 +128,10 @@ final class Murmur3Hash extends Hasher
         return l;
     }
 
-    long hash(long adr, long offset, int length)
+    long hash(MemorySegment segment)
     {
-        long o = offset;
-        long r = length;
+        long o = 0;
+        long r = segment.byteSize();
 
         long h1 = 0L;
         long h2 = 0L;
@@ -136,9 +139,9 @@ final class Murmur3Hash extends Hasher
 
         for (; r >= 16; r -= 16)
         {
-            k1 = getLong(adr, o);
+            k1 = getLong(segment, o);
             o += 8;
-            k2 = getLong(adr, o);
+            k2 = getLong(segment, o);
             o += 8;
 
             // bmix64()
@@ -163,36 +166,36 @@ final class Murmur3Hash extends Hasher
             switch ((int) r)
             {
                 case 15:
-                    k2 ^= toLong(Uns.getByte(adr, o + 14)) << 48; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 14)) << 48; // fall through
                 case 14:
-                    k2 ^= toLong(Uns.getByte(adr, o + 13)) << 40; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 13)) << 40; // fall through
                 case 13:
-                    k2 ^= toLong(Uns.getByte(adr, o + 12)) << 32; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 12)) << 32; // fall through
                 case 12:
-                    k2 ^= toLong(Uns.getByte(adr, o + 11)) << 24; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 11)) << 24; // fall through
                 case 11:
-                    k2 ^= toLong(Uns.getByte(adr, o + 10)) << 16; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 10)) << 16; // fall through
                 case 10:
-                    k2 ^= toLong(Uns.getByte(adr, o + 9)) << 8; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 9)) << 8; // fall through
                 case 9:
-                    k2 ^= toLong(Uns.getByte(adr, o + 8)); // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 8)); // fall through
                 case 8:
-                    k1 ^= getLong(adr, o);
+                    k1 ^= getLong(segment, o);
                     break;
                 case 7:
-                    k1 ^= toLong(Uns.getByte(adr, o + 6)) << 48; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 6)) << 48; // fall through
                 case 6:
-                    k1 ^= toLong(Uns.getByte(adr, o + 5)) << 40; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 5)) << 40; // fall through
                 case 5:
-                    k1 ^= toLong(Uns.getByte(adr, o + 4)) << 32; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 4)) << 32; // fall through
                 case 4:
-                    k1 ^= toLong(Uns.getByte(adr, o + 3)) << 24; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 3)) << 24; // fall through
                 case 3:
-                    k1 ^= toLong(Uns.getByte(adr, o + 2)) << 16; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 2)) << 16; // fall through
                 case 2:
-                    k1 ^= toLong(Uns.getByte(adr, o + 1)) << 8; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o + 1)) << 8; // fall through
                 case 1:
-                    k1 ^= toLong(Uns.getByte(adr, o));
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, o));
                     break;
                 default:
                     throw new AssertionError("Should never get here.");
@@ -204,8 +207,8 @@ final class Murmur3Hash extends Hasher
 
         // makeHash()
 
-        h1 ^= length;
-        h2 ^= length;
+        h1 ^= segment.byteSize();
+        h2 ^= segment.byteSize();
 
         h1 += h2;
         h2 += h1;
@@ -221,18 +224,11 @@ final class Murmur3Hash extends Hasher
         return h1;
     }
 
-    private static long getLong(long adr, long o)
+    private static long getLong(MemorySegment segment, long o)
     {
-        long l = toLong(Uns.getByte(adr, o + 7)) << 56;
-        l |= toLong(Uns.getByte(adr, o + 6)) << 48;
-        l |= toLong(Uns.getByte(adr, o + 5)) << 40;
-        l |= toLong(Uns.getByte(adr, o + 4)) << 32;
-        l |= toLong(Uns.getByte(adr, o + 3)) << 24;
-        l |= toLong(Uns.getByte(adr, o + 2)) << 16;
-        l |= toLong(Uns.getByte(adr, o + 1)) << 8;
-        l |= toLong(Uns.getByte(adr, o));
-        return l;
+        return segment.get(ValueLayout.JAVA_LONG_UNALIGNED, o);
     }
+
     static final long C1 = 0x87c37b91114253d5L;
     static final long C2 = 0x4cf5ad432745937fL;
 

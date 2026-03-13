@@ -15,19 +15,21 @@
  */
 package org.caffinitas.ohc.linked;
 
+import java.lang.foreign.MemorySegment;
+
 import net.jpountz.xxhash.XXHashFactory;
 
 final class XxHash extends Hasher
 {
     private static final XXHashFactory xx = XXHashFactory.fastestInstance();
 
-    long hash(long address, long offset, int length)
-    {
-        return xx.hash64().hash(Uns.memorySegmentFor(address, offset, length).asByteBuffer(), 0);
-    }
-
     long hash(byte[] array)
     {
         return xx.hash64().hash(array, 0, array.length, 0);
+    }
+
+    long hash(MemorySegment segment)
+    {
+        return xx.hash64().hash(segment.asByteBuffer(), 0);
     }
 }

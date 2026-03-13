@@ -15,6 +15,7 @@
  */
 package org.caffinitas.ohc.linked;
 
+import java.lang.foreign.MemorySegment;
 import java.util.zip.CRC32;
 
 class Crc32Hash extends Hasher
@@ -28,12 +29,10 @@ class Crc32Hash extends Hasher
         return h;
     }
 
-    long hash(long address, long offset, int length)
+    long hash(MemorySegment segment)
     {
-        Uns.validate(address, offset, length);
-
         CRC32 crc = new CRC32();
-        crc.update(Uns.memorySegmentFor(address, offset, length).asByteBuffer());
+        crc.update(segment.asByteBuffer());
         long h = crc.getValue();
         h |= h << 32;
         return h;

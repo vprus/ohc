@@ -16,22 +16,26 @@
 package org.caffinitas.ohc.chunked;
 
 import java.lang.foreign.MemorySegment;
-import java.nio.ByteBuffer;
+import java.lang.foreign.ValueLayout;
 
 final class Murmur3Hash extends Hasher
 {
     long hash(MemorySegment segment)
     {
-        ByteBuffer buffer = segment.asByteBuffer();
         long h1 = 0L;
         long h2 = 0L;
         long k1, k2;
-        long length = buffer.remaining();
+        long offset = 0;
+        long length = segment.byteSize();
+        long r = length;
 
-        while (buffer.remaining() >= 16)
+        while (r >= 16)
         {
-            k1 = getLong(buffer);
-            k2 = getLong(buffer);
+            k1 = getLong(segment, offset);
+            offset += 8;
+            k2 = getLong(segment, offset);
+            offset += 8;
+            r -= 16;
 
             // bmix64()
 
@@ -48,50 +52,47 @@ final class Murmur3Hash extends Hasher
             h2 = h2 * 5 + 0x38495ab5;
         }
 
-        int r = buffer.remaining();
         if (r > 0)
         {
             k1 = 0;
             k2 = 0;
-            int p = buffer.position();
-            switch (r)
+            switch ((int) r)
             {
                 case 15:
-                    k2 ^= toLong(buffer.get(p + 14)) << 48; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 14)) << 48; // fall through
                 case 14:
-                    k2 ^= toLong(buffer.get(p + 13)) << 40; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 13)) << 40; // fall through
                 case 13:
-                    k2 ^= toLong(buffer.get(p + 12)) << 32; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 12)) << 32; // fall through
                 case 12:
-                    k2 ^= toLong(buffer.get(p + 11)) << 24; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 11)) << 24; // fall through
                 case 11:
-                    k2 ^= toLong(buffer.get(p + 10)) << 16; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 10)) << 16; // fall through
                 case 10:
-                    k2 ^= toLong(buffer.get(p + 9)) << 8; // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 9)) << 8; // fall through
                 case 9:
-                    k2 ^= toLong(buffer.get(p + 8)); // fall through
+                    k2 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 8)); // fall through
                 case 8:
-                    k1 ^= getLong(buffer);
+                    k1 ^= getLong(segment, offset);
                     break;
                 case 7:
-                    k1 ^= toLong(buffer.get(p + 6)) << 48; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 6)) << 48; // fall through
                 case 6:
-                    k1 ^= toLong(buffer.get(p + 5)) << 40; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 5)) << 40; // fall through
                 case 5:
-                    k1 ^= toLong(buffer.get(p + 4)) << 32; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 4)) << 32; // fall through
                 case 4:
-                    k1 ^= toLong(buffer.get(p + 3)) << 24; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 3)) << 24; // fall through
                 case 3:
-                    k1 ^= toLong(buffer.get(p + 2)) << 16; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 2)) << 16; // fall through
                 case 2:
-                    k1 ^= toLong(buffer.get(p + 1)) << 8; // fall through
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset + 1)) << 8; // fall through
                 case 1:
-                    k1 ^= toLong(buffer.get(p));
+                    k1 ^= toLong(segment.get(ValueLayout.JAVA_BYTE, offset));
                     break;
                 default:
                     throw new AssertionError("Should never get here.");
             }
-            buffer.position(p + r);
 
             h1 ^= mixK1(k1);
             h2 ^= mixK2(k2);
@@ -116,20 +117,11 @@ final class Murmur3Hash extends Hasher
         return h1;
     }
 
-    private static long getLong(ByteBuffer buffer)
+    private static long getLong(MemorySegment segment, long offset)
     {
-        int o = buffer.position();
-        long l = toLong(buffer.get(o + 7)) << 56;
-        l |= toLong(buffer.get(o + 6)) << 48;
-        l |= toLong(buffer.get(o + 5)) << 40;
-        l |= toLong(buffer.get(o + 4)) << 32;
-        l |= toLong(buffer.get(o + 3)) << 24;
-        l |= toLong(buffer.get(o + 2)) << 16;
-        l |= toLong(buffer.get(o + 1)) << 8;
-        l |= toLong(buffer.get(o));
-        buffer.position(o + 8);
-        return l;
+        return segment.get(ValueLayout.JAVA_LONG_UNALIGNED, offset);
     }
+
     static final long C1 = 0x87c37b91114253d5L;
     static final long C2 = 0x4cf5ad432745937fL;
 

@@ -334,7 +334,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
             freeAndThrow(e, hashEntryAdr);
         }
 
-        return hasher.hash(hashEntryAdr, Util.ENTRY_OFF_DATA, keyLen);
+        return hasher.hash(Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_DATA, keyLen));
     }
 
     private static void freeAndThrow(Throwable e, long hashEntryAdr)
@@ -409,7 +409,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
                 freeAndThrow(e, hashEntryAdr);
             }
 
-            final long hash = hasher.hash(hashEntryAdr, Util.ENTRY_OFF_DATA, keyLen);
+            final long hash = hasher.hash(Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_DATA, keyLen));
 
             // initialize hash entry
             HashEntries.init(hash, keyLen, 0, hashEntryAdr, Util.SENTINEL_LOADING, 0L);
@@ -888,17 +888,16 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
         long headerAddress = Uns.allocateIOException(8, throwOOME);
         try
         {
-            ByteBuffer header = Uns.memorySegmentFor(headerAddress, 0L, 8L).asByteBuffer();
+            MemorySegment header = Uns.memorySegmentFor(headerAddress, 0L, 8L);
             Util.readFully(channel, header);
-            header.flip();
-            int magic = header.getInt();
+            int magic = header.get(Util.BIG_ENDIAN_INT, 0);
             if (magic == Util.HEADER_KEYS_WRONG)
                 throw new IOException("File from instance with different CPU architecture cannot be loaded");
             if (magic == Util.HEADER_ENTRIES)
                 throw new IOException("File contains entries - expected keys");
             if (magic != Util.HEADER_KEYS)
                 throw new IOException("Illegal file header");
-            if (header.getInt() != CURRENT_FILE_VERSION)
+            if (header.get(Util.BIG_ENDIAN_INT, 4) != CURRENT_FILE_VERSION)
                 throw new IOException("Illegal file version");
         }
         finally
@@ -961,7 +960,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
                         bufAdr = Uns.allocateIOException(bufLen, throwOOME);
                     }
 
-                    if (!Util.readFully(channel, Uns.memorySegmentFor(bufAdr, Util.ENTRY_OFF_DATA, keyLen).asByteBuffer()))
+                    if (!Util.readFully(channel, Uns.memorySegmentFor(bufAdr, Util.ENTRY_OFF_DATA, keyLen)))
                     {
                         eod = true;
                         throw new EOFException();
@@ -1043,7 +1042,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
         HashEntries.init(hash, keyLen, valueLen, hashEntryAdr, Util.SENTINEL_NOT_PRESENT, defaultExpireAt());
 
         // read key + value
-        if (!Util.readFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_DATA, kvLen).asByteBuffer()) ||
+        if (!Util.readFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_DATA, kvLen)) ||
             !segment(hash).putEntry(hashEntryAdr, hash, keyLen, totalLen, false, expireAt, 0L, 0L))
         {
             Uns.free(hashEntryAdr);
@@ -1066,17 +1065,16 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
         long headerAddress = Uns.allocateIOException(8, throwOOME);
         try
         {
-            ByteBuffer header = Uns.memorySegmentFor(headerAddress, 0L, 8L).asByteBuffer();
+            MemorySegment header = Uns.memorySegmentFor(headerAddress, 0L, 8L);
             Util.readFully(channel, header);
-            header.flip();
-            int magic = header.getInt();
+            int magic = header.get(Util.BIG_ENDIAN_INT, 0);
             if (magic == Util.HEADER_ENTRIES_WRONG)
                 throw new IOException("File from instance with different CPU architecture cannot be loaded");
             if (magic == Util.HEADER_KEYS)
                 throw new IOException("File contains keys - expected entries");
             if (magic != Util.HEADER_ENTRIES)
                 throw new IOException("Illegal file header");
-            if (header.getInt() != CURRENT_FILE_VERSION)
+            if (header.get(Util.BIG_ENDIAN_INT, 4) != CURRENT_FILE_VERSION)
                 throw new IOException("Illegal file version");
         }
         finally
@@ -1110,10 +1108,9 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
         long headerAddress = Uns.allocateIOException(8, throwOOME);
         try
         {
-            ByteBuffer headerBuffer = Uns.memorySegmentFor(headerAddress, 0L, 8L).asByteBuffer();
-            headerBuffer.putInt(entries ? Util.HEADER_ENTRIES : Util.HEADER_KEYS);
-            headerBuffer.putInt(CURRENT_FILE_VERSION);
-            headerBuffer.flip();
+            MemorySegment headerBuffer = Uns.memorySegmentFor(headerAddress, 0L, 8L);
+            headerBuffer.set(Util.BIG_ENDIAN_INT, 0, entries ? Util.HEADER_ENTRIES : Util.HEADER_KEYS);
+            headerBuffer.set(Util.BIG_ENDIAN_INT, 4, CURRENT_FILE_VERSION);
             Util.writeFully(channel, headerBuffer);
         }
         finally
@@ -1171,7 +1168,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
             long totalLen = Util.SERIALIZED_ENTRY_SIZE + Util.roundUpTo8(keyLen) + valueLen;
 
             // write hash, keyLen, valueLen + key + value
-            Util.writeFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_HASH, totalLen).asByteBuffer());
+            Util.writeFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_HASH, totalLen));
 
             return true;
         }
@@ -1190,7 +1187,7 @@ public final class OHCacheLinkedImpl<K, V> implements OHCache<K, V>
             long totalLen = Util.SERIALIZED_KEY_LEN_SIZE + keyLen;
 
             // write keyLen + key
-            Util.writeFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_KEY_LENGTH, totalLen).asByteBuffer());
+            Util.writeFully(channel, Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_KEY_LENGTH, totalLen));
 
             return true;
         }

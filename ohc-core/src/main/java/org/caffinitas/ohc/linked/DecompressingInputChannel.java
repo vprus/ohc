@@ -17,6 +17,7 @@ package org.caffinitas.ohc.linked;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 
@@ -24,6 +25,7 @@ import org.xerial.snappy.Snappy;
 
 import static org.caffinitas.ohc.linked.Util.HEADER_COMPRESSED;
 import static org.caffinitas.ohc.linked.Util.HEADER_COMPRESSED_WRONG;
+import static org.caffinitas.ohc.linked.Util.BIG_ENDIAN_INT;
 import static org.caffinitas.ohc.linked.Util.readFully;
 
 final class DecompressingInputChannel implements ReadableByteChannel
@@ -46,19 +48,18 @@ final class DecompressingInputChannel implements ReadableByteChannel
         int maxCLen;
         try
         {
-            ByteBuffer header = Uns.memorySegmentFor(headerAdr, 0, 16).asByteBuffer();
+            MemorySegment header = Uns.memorySegmentFor(headerAdr, 0, 16);
             if (!readFully(delegate, header))
                 throw new EOFException("Could not read file header");
-            header.flip();
-            int magic = header.getInt();
+            int magic = header.get(BIG_ENDIAN_INT, 0);
             if (magic == HEADER_COMPRESSED_WRONG)
                 throw new IOException("File from instance with different CPU architecture cannot be loaded");
             if (magic != HEADER_COMPRESSED)
                 throw new IOException("Illegal file header");
-            if (header.getInt() != 1)
+            if (header.get(BIG_ENDIAN_INT, 4) != 1)
                 throw new IOException("Illegal file version");
-            bufferSize = header.getInt();
-            maxCLen = header.getInt();
+            bufferSize = header.get(BIG_ENDIAN_INT, 8);
+            maxCLen = header.get(BIG_ENDIAN_INT, 12);
         }
         finally
         {
