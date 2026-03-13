@@ -15,7 +15,7 @@
  */
 package org.caffinitas.ohc.chunked;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 
 import org.caffinitas.ohc.HashAlgorithm;
 
@@ -47,14 +47,6 @@ abstract class Hasher
         }
     }
 
-    private static String forAlg(HashAlgorithm hashAlgorithm)
-    {
-        return Hasher.class.getName().substring(0, Hasher.class.getName().lastIndexOf('.') + 1)
-               + hashAlgorithm.name().charAt(0)
-               + hashAlgorithm.name().substring(1).toLowerCase()
-               + "Hash";
-    }
-
-    abstract long hash(ByteBuffer buffer);
+    abstract long hash(MemorySegment segment);
 
 }

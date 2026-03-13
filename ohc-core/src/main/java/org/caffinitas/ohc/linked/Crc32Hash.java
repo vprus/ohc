@@ -33,7 +33,7 @@ class Crc32Hash extends Hasher
         Uns.validate(address, offset, length);
 
         CRC32 crc = new CRC32();
-        crc.update(Uns.directBufferFor(address, offset, length, true));
+        crc.update(Uns.memorySegmentFor(address, offset, length).asByteBuffer());
         long h = crc.getValue();
         h |= h << 32;
         return h;

@@ -20,7 +20,8 @@ import org.caffinitas.ohc.CacheSerializer;
 import org.caffinitas.ohc.OHCache;
 import org.testng.Assert;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.Random;
 
 final class TestUtils
@@ -28,19 +29,19 @@ final class TestUtils
     public static final long ONE_MB = 1024 * 1024;
     public static final CacheSerializer<String> stringSerializer = new CacheSerializer<String>()
     {
-        public void serialize(String s, ByteBuffer buf)
+        public void serialize(String s, MemorySegment buf)
         {
             byte[] bytes = s.getBytes(Charsets.UTF_8);
-            buf.put((byte) ((bytes.length >>> 8) & 0xFF));
-            buf.put((byte) ((bytes.length >>> 0) & 0xFF));
-            buf.put(bytes);
+            buf.set(ValueLayout.JAVA_BYTE, 0, (byte) ((bytes.length >>> 8) & 0xFF));
+            buf.set(ValueLayout.JAVA_BYTE, 1, (byte) (bytes.length & 0xFF));
+            MemorySegment.copy(bytes, 0, buf, ValueLayout.JAVA_BYTE, 2, bytes.length);
         }
 
-        public String deserialize(ByteBuffer buf)
+        public String deserialize(MemorySegment buf)
         {
-            int length = (((buf.get() & 0xff) << 8) + ((buf.get() & 0xff) << 0));
+            int length = (((buf.get(ValueLayout.JAVA_BYTE, 0) & 0xff) << 8) | (buf.get(ValueLayout.JAVA_BYTE, 1) & 0xff));
             byte[] bytes = new byte[length];
-            buf.get(bytes);
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, 2, bytes, 0, bytes.length);
             return new String(bytes, Charsets.UTF_8);
         }
 
@@ -51,16 +52,16 @@ final class TestUtils
     };
     public static final CacheSerializer<String> stringSerializerFailSerialize = new CacheSerializer<String>()
     {
-        public void serialize(String s, ByteBuffer buf)
+        public void serialize(String s, MemorySegment buf)
         {
             throw new RuntimeException("foo bar");
         }
 
-        public String deserialize(ByteBuffer buf)
+        public String deserialize(MemorySegment buf)
         {
-            int length = (buf.get() << 8) + (buf.get() << 0);
+            int length = (((buf.get(ValueLayout.JAVA_BYTE, 0) & 0xff) << 8) | (buf.get(ValueLayout.JAVA_BYTE, 1) & 0xff));
             byte[] bytes = new byte[length];
-            buf.get(bytes);
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, 2, bytes, 0, bytes.length);
             return new String(bytes, Charsets.UTF_8);
         }
 
@@ -71,15 +72,15 @@ final class TestUtils
     };
     public static final CacheSerializer<String> stringSerializerFailDeserialize = new CacheSerializer<String>()
     {
-        public void serialize(String s, ByteBuffer buf)
+        public void serialize(String s, MemorySegment buf)
         {
             byte[] bytes = s.getBytes(Charsets.UTF_8);
-            buf.put((byte) ((bytes.length >>> 8) & 0xFF));
-            buf.put((byte) ((bytes.length >>> 0) & 0xFF));
-            buf.put(bytes);
+            buf.set(ValueLayout.JAVA_BYTE, 0, (byte) ((bytes.length >>> 8) & 0xFF));
+            buf.set(ValueLayout.JAVA_BYTE, 1, (byte) (bytes.length & 0xFF));
+            MemorySegment.copy(bytes, 0, buf, ValueLayout.JAVA_BYTE, 2, bytes.length);
         }
 
-        public String deserialize(ByteBuffer buf)
+        public String deserialize(MemorySegment buf)
         {
             throw new RuntimeException("foo bar");
         }
@@ -116,29 +117,31 @@ final class TestUtils
     public static final byte[] dummyByteArray;
     public static final CacheSerializer<Integer> intSerializer = new CacheSerializer<Integer>()
     {
-        public void serialize(Integer s, ByteBuffer buf)
+        public void serialize(Integer s, MemorySegment buf)
         {
-            buf.put((byte)(1 & 0xff));
-            buf.putChar('A');
-            buf.putDouble(42.42424242d);
-            buf.putFloat(11.111f);
-            buf.putInt(s);
-            buf.putLong(Long.MAX_VALUE);
-            buf.putShort((short)(0x7654 & 0xFFFF));
-            buf.put(dummyByteArray);
+            long off = 0;
+            buf.set(ValueLayout.JAVA_BYTE, off, (byte)(1 & 0xff)); off += 1;
+            buf.set(ValueLayout.JAVA_CHAR_UNALIGNED, off, 'A'); off += 2;
+            buf.set(ValueLayout.JAVA_DOUBLE_UNALIGNED, off, 42.42424242d); off += 8;
+            buf.set(ValueLayout.JAVA_FLOAT_UNALIGNED, off, 11.111f); off += 4;
+            buf.set(ValueLayout.JAVA_INT_UNALIGNED, off, s); off += 4;
+            buf.set(ValueLayout.JAVA_LONG_UNALIGNED, off, Long.MAX_VALUE); off += 8;
+            buf.set(ValueLayout.JAVA_SHORT_UNALIGNED, off, (short)(0x7654 & 0xFFFF)); off += 2;
+            MemorySegment.copy(dummyByteArray, 0, buf, ValueLayout.JAVA_BYTE, off, dummyByteArray.length);
         }
 
-        public Integer deserialize(ByteBuffer buf)
+        public Integer deserialize(MemorySegment buf)
         {
-            Assert.assertEquals(buf.get(), (byte) 1);
-            Assert.assertEquals(buf.getChar(), 'A');
-            Assert.assertEquals(buf.getDouble(), 42.42424242d);
-            Assert.assertEquals(buf.getFloat(), 11.111f);
-            int r = buf.getInt();
-            Assert.assertEquals(buf.getLong(), Long.MAX_VALUE);
-            Assert.assertEquals(buf.getShort(), 0x7654);
+            long off = 0;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_BYTE, off), (byte) 1); off += 1;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_CHAR_UNALIGNED, off), 'A'); off += 2;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_DOUBLE_UNALIGNED, off), 42.42424242d); off += 8;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_FLOAT_UNALIGNED, off), 11.111f); off += 4;
+            int r = buf.get(ValueLayout.JAVA_INT_UNALIGNED, off); off += 4;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_LONG_UNALIGNED, off), Long.MAX_VALUE); off += 8;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_SHORT_UNALIGNED, off), (short) 0x7654); off += 2;
             byte[] b = new byte[dummyByteArray.length];
-            buf.get(b);
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, off, b, 0, b.length);
             Assert.assertEquals(b, dummyByteArray);
             return r;
         }
@@ -150,22 +153,23 @@ final class TestUtils
     };
     public static final CacheSerializer<Integer> intSerializerFailSerialize = new CacheSerializer<Integer>()
     {
-        public void serialize(Integer s, ByteBuffer buf)
+        public void serialize(Integer s, MemorySegment buf)
         {
             throw new RuntimeException("foo bar");
         }
 
-        public Integer deserialize(ByteBuffer buf)
+        public Integer deserialize(MemorySegment buf)
         {
-            Assert.assertEquals(buf.get(), (byte) 1);
-            Assert.assertEquals(buf.getChar(), 'A');
-            Assert.assertEquals(buf.getDouble(), 42.42424242d);
-            Assert.assertEquals(buf.getFloat(), 11.111f);
-            int r = buf.getInt();
-            Assert.assertEquals(buf.getLong(), Long.MAX_VALUE);
-            Assert.assertEquals(buf.getShort(), 0x7654);
+            long off = 0;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_BYTE, off), (byte) 1); off += 1;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_CHAR_UNALIGNED, off), 'A'); off += 2;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_DOUBLE_UNALIGNED, off), 42.42424242d); off += 8;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_FLOAT_UNALIGNED, off), 11.111f); off += 4;
+            int r = buf.get(ValueLayout.JAVA_INT_UNALIGNED, off); off += 4;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_LONG_UNALIGNED, off), Long.MAX_VALUE); off += 8;
+            Assert.assertEquals(buf.get(ValueLayout.JAVA_SHORT_UNALIGNED, off), (short) 0x7654); off += 2;
             byte[] b = new byte[dummyByteArray.length];
-            buf.get(b);
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, off, b, 0, b.length);
             Assert.assertEquals(b, dummyByteArray);
             return r;
         }
@@ -177,19 +181,20 @@ final class TestUtils
     };
     public static final CacheSerializer<Integer> intSerializerFailDeserialize = new CacheSerializer<Integer>()
     {
-        public void serialize(Integer s, ByteBuffer buf)
+        public void serialize(Integer s, MemorySegment buf)
         {
-            buf.put((byte)(1 & 0xff));
-            buf.putChar('A');
-            buf.putDouble(42.42424242d);
-            buf.putFloat(11.111f);
-            buf.putInt(s);
-            buf.putLong(Long.MAX_VALUE);
-            buf.putShort((short)(0x7654 & 0xFFFF));
-            buf.put(dummyByteArray);
+            long off = 0;
+            buf.set(ValueLayout.JAVA_BYTE, off, (byte)(1 & 0xff)); off += 1;
+            buf.set(ValueLayout.JAVA_CHAR_UNALIGNED, off, 'A'); off += 2;
+            buf.set(ValueLayout.JAVA_DOUBLE_UNALIGNED, off, 42.42424242d); off += 8;
+            buf.set(ValueLayout.JAVA_FLOAT_UNALIGNED, off, 11.111f); off += 4;
+            buf.set(ValueLayout.JAVA_INT_UNALIGNED, off, s); off += 4;
+            buf.set(ValueLayout.JAVA_LONG_UNALIGNED, off, Long.MAX_VALUE); off += 8;
+            buf.set(ValueLayout.JAVA_SHORT_UNALIGNED, off, (short)(0x7654 & 0xFFFF)); off += 2;
+            MemorySegment.copy(dummyByteArray, 0, buf, ValueLayout.JAVA_BYTE, off, dummyByteArray.length);
         }
 
-        public Integer deserialize(ByteBuffer buf)
+        public Integer deserialize(MemorySegment buf)
         {
             throw new RuntimeException("foo bar");
         }

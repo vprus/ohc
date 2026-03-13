@@ -15,14 +15,14 @@
  */
 package org.caffinitas.ohc.chunked;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferPosition;
 
 final class Murmur3Hash extends Hasher
 {
-    long hash(ByteBuffer buffer)
+    long hash(MemorySegment segment)
     {
+        ByteBuffer buffer = segment.asByteBuffer();
         long h1 = 0L;
         long h2 = 0L;
         long k1, k2;
@@ -91,7 +91,7 @@ final class Murmur3Hash extends Hasher
                 default:
                     throw new AssertionError("Should never get here.");
             }
-            byteBufferPosition(buffer, p + r);
+            buffer.position(p + r);
 
             h1 ^= mixK1(k1);
             h2 ^= mixK2(k2);
@@ -127,7 +127,7 @@ final class Murmur3Hash extends Hasher
         l |= toLong(buffer.get(o + 2)) << 16;
         l |= toLong(buffer.get(o + 1)) << 8;
         l |= toLong(buffer.get(o));
-        byteBufferPosition(buffer, o + 8);
+        buffer.position(o + 8);
         return l;
     }
     static final long C1 = 0x87c37b91114253d5L;

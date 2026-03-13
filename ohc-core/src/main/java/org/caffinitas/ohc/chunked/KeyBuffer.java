@@ -15,26 +15,27 @@
  */
 package org.caffinitas.ohc.chunked;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 final class KeyBuffer
 {
-    private final ByteBuffer bytes;
+    private final MemorySegment bytes;
     private long hash;
 
-    KeyBuffer(ByteBuffer bytes)
+    KeyBuffer(MemorySegment bytes)
     {
         this.bytes = bytes;
     }
 
-    ByteBuffer buffer()
+    MemorySegment segment()
     {
         return bytes;
     }
 
     int size()
     {
-        return bytes.limit() - bytes.position();
+        return (int) bytes.byteSize();
     }
 
     long hash()
@@ -44,8 +45,7 @@ final class KeyBuffer
 
     KeyBuffer finish(Hasher hasher)
     {
-        // duplicate the buffer as the hasher implementation may change position
-        hash = hasher.hash(bytes.duplicate());
+        hash = hasher.hash(bytes);
 
         return this;
     }
@@ -57,7 +57,7 @@ final class KeyBuffer
 
         KeyBuffer keyBuffer = (KeyBuffer) o;
 
-        return bytes.equals(keyBuffer.bytes);
+        return bytes.mismatch(keyBuffer.bytes) == -1;
     }
 
     public int hashCode()
@@ -77,9 +77,9 @@ final class KeyBuffer
     public String toString()
     {
         StringBuilder sb = new StringBuilder();
-        for (int ii = 0; ii < bytes.limit(); ii++) {
+        for (long ii = 0; ii < bytes.byteSize(); ii++) {
             if (ii % 8 == 0 && ii != 0) sb.append('\n');
-            sb.append(padToEight(bytes.get(ii)));
+            sb.append(padToEight(bytes.get(ValueLayout.JAVA_BYTE, ii)));
             sb.append(' ');
         }
         return sb.toString();

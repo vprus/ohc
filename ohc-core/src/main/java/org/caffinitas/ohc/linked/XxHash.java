@@ -23,7 +23,7 @@ final class XxHash extends Hasher
 
     long hash(long address, long offset, int length)
     {
-        return xx.hash64().hash(Uns.directBufferFor(address, offset, length, true), 0);
+        return xx.hash64().hash(Uns.memorySegmentFor(address, offset, length).asByteBuffer(), 0);
     }
 
     long hash(byte[] array)

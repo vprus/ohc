@@ -16,7 +16,8 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Arrays;
@@ -39,8 +40,6 @@ import org.caffinitas.ohc.OHCache;
 import org.caffinitas.ohc.OHCacheBuilder;
 import org.caffinitas.ohc.OHCacheStats;
 import org.caffinitas.ohc.histo.EstimatedHistogram;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.*;
 
 public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
 {
@@ -235,26 +234,18 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
             bytes += oldValueLen;
         }
 
-        ByteBuffer hashEntry = ByteBuffer.allocate(bytes);
+        MemorySegment hashEntry = MemorySegment.ofArray(new byte[bytes]);
 
-        byteBufferPosition(hashEntry, Util.entryOffData(isFixedSize()));
-        keySerializer.serialize(k, hashEntry);
-        fillUntil(hashEntry, Util.entryOffData(isFixedSize()) + keyLen);
-        valueSerializer.serialize(v, hashEntry);
-        fillUntil(hashEntry, Util.entryOffData(isFixedSize()) + keyLen + valueLen);
+        long dataOff = Util.entryOffData(isFixedSize());
+        keySerializer.serialize(k, hashEntry.asSlice(dataOff, keyLen));
+        valueSerializer.serialize(v, hashEntry.asSlice(dataOff + keyLen, valueLen));
 
         if (old != null)
-        {
-            valueSerializer.serialize(old, hashEntry);
-            fillUntil(hashEntry, Util.entryOffData(isFixedSize()) + keyLen + valueLen * 2);
-        }
+            valueSerializer.serialize(old, hashEntry.asSlice(dataOff + keyLen + valueLen, valueLen));
 
-        byteBufferPosition(hashEntry, Util.entryOffData(isFixedSize()));
-        byteBufferLimit(hashEntry, Util.entryOffData(isFixedSize()) + keyLen);
-        long hash = hasher.hash(hashEntry);
-
-        byteBufferPosition(hashEntry, 0);
-        byteBufferLimit(hashEntry, bytes);
+        // Hash over the key region
+        MemorySegment keySlice = hashEntry.asSlice(dataOff, keyLen);
+        long hash = hasher.hash(keySlice);
 
         // initialize hash entry
         initEntry(hash, keyLen, valueLen, hashEntry);
@@ -264,19 +255,17 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
 
     private boolean putInternalVariable(K k, V v, boolean ifAbsent, V old)
     {
-        int sz = Util.entryOffData(isFixedSize()) +
-                 (isFixedSize()
-                 ? fixedKeySize + fixedValueSize + (old != null ? fixedValueSize : 0)
-                 : keySize(k) + valueSize(v) + (old != null ? valueSize(old) : 0));
+        int keyLen = keySize(k);
+        int valueLen = valueSize(v);
+        int oldValueLen = old != null ? valueSize(old) : 0;
+        int sz = Util.entryOffData(isFixedSize()) + keyLen + valueLen + oldValueLen;
 
-        ByteBuffer hashEntry = ByteBuffer.allocate(sz);
+        MemorySegment hashEntry = MemorySegment.ofArray(new byte[sz]);
 
-        byteBufferPosition(hashEntry, Util.entryOffData(isFixedSize()));
-        keySerializer.serialize(k, hashEntry);
-        int keyLen = hashEntry.position() - Util.entryOffData(isFixedSize());
-        valueSerializer.serialize(v, hashEntry);
-        int valueLen = hashEntry.position() - keyLen - Util.entryOffData(isFixedSize());
-        int entryBytes = hashEntry.position();
+        long dataOff = Util.entryOffData(isFixedSize());
+        keySerializer.serialize(k, hashEntry.asSlice(dataOff, keyLen));
+        valueSerializer.serialize(v, hashEntry.asSlice(dataOff + keyLen, valueLen));
+        int entryBytes = (int) dataOff + keyLen + valueLen;
 
         if (maxEntrySize > 0L && entryBytes > maxEntrySize)
         {
@@ -284,20 +273,11 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
             return false;
         }
 
-        int oldValueLen = 0;
         if (old != null)
-        {
-            valueSerializer.serialize(old, hashEntry);
-            oldValueLen = hashEntry.position() - entryBytes;
-        }
-        int bytes = hashEntry.position();
+            valueSerializer.serialize(old, hashEntry.asSlice(dataOff + keyLen + valueLen, oldValueLen));
 
-        byteBufferPosition(hashEntry, Util.entryOffData(isFixedSize()));
-        byteBufferLimit(hashEntry, Util.entryOffData(isFixedSize()) + keyLen);
-        long hash = hasher.hash(hashEntry);
-
-        byteBufferPosition(hashEntry, 0);
-        byteBufferLimit(hashEntry, bytes);
+        // Hash over the key region
+        long hash = hasher.hash(hashEntry.asSlice(dataOff, keyLen));
 
         // initialize hash entry
         initEntry(hash, keyLen, valueLen, hashEntry);
@@ -365,36 +345,25 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
     private KeyBuffer keySource(K o)
     {
         int sz = isFixedSize() ? fixedKeySize : keySize(o);
-        ByteBuffer keyBuffer = ByteBuffer.allocate(sz);
-        keySerializer.serialize(o, keyBuffer);
-        byteBufferFlip(keyBuffer);
-        return keySource(keyBuffer);
+        MemorySegment keySegment = MemorySegment.ofArray(new byte[sz]);
+        keySerializer.serialize(o, keySegment);
+        return new KeyBuffer(keySegment).finish(hasher);
     }
 
-    private KeyBuffer keySource(ByteBuffer keyBuffer)
+    private KeyBuffer keySource(MemorySegment keySegment)
     {
-        return new KeyBuffer(keyBuffer).finish(hasher);
+        return new KeyBuffer(keySegment).finish(hasher);
     }
 
-    private void fillUntil(ByteBuffer keyBuffer, int until)
+    private void initEntry(long hash, int keyLen, int valueLen, MemorySegment hashEntry)
     {
-        while (until - keyBuffer.position() >= 8)
-            keyBuffer.putLong(0L);
-        while (until - keyBuffer.position() >= 4)
-            keyBuffer.putInt(0);
-        while (until - keyBuffer.position() > 0)
-            keyBuffer.put((byte) 0);
-    }
-
-    private void initEntry(long hash, int keyLen, int valueLen, ByteBuffer hashEntry)
-    {
-        hashEntry.putLong(Util.ENTRY_OFF_HASH, hash);
-        hashEntry.putInt(Util.ENTRY_OFF_NEXT, 0);
+        hashEntry.set(ValueLayout.JAVA_LONG_UNALIGNED, Util.ENTRY_OFF_HASH, hash);
+        hashEntry.set(ValueLayout.JAVA_INT_UNALIGNED, Util.ENTRY_OFF_NEXT, 0);
         if (fixedKeySize > 0)
             return;
-        hashEntry.putInt(Util.ENTRY_OFF_VALUE_LENGTH, valueLen);
-        hashEntry.putInt(Util.ENTRY_OFF_KEY_LENGTH, keyLen);
-        hashEntry.putInt(Util.ENTRY_OFF_RESERVED_LENGTH, valueLen);
+        hashEntry.set(ValueLayout.JAVA_INT_UNALIGNED, Util.ENTRY_OFF_VALUE_LENGTH, valueLen);
+        hashEntry.set(ValueLayout.JAVA_INT_UNALIGNED, Util.ENTRY_OFF_KEY_LENGTH, keyLen);
+        hashEntry.set(ValueLayout.JAVA_INT_UNALIGNED, Util.ENTRY_OFF_RESERVED_LENGTH, valueLen);
     }
 
     //
@@ -663,24 +632,24 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
     // - snapshot content of chunk into a separate buffer
     // - iterate over that buffer
 
-    private final class SegmentIterator implements CloseableIterator<ByteBuffer>
+    private final class SegmentIterator implements CloseableIterator<MemorySegment>
     {
         private final int keysPerChunk;
 
         private int seg;
 
-        private Iterator<ByteBuffer> chunkIterator;
+        private Iterator<MemorySegment> chunkIterator;
 
-        private final ByteBuffer snaphotBuffer;
+        private final MemorySegment snaphotBuffer;
 
         private boolean eod;
-        private ByteBuffer next;
-        private ByteBuffer current;
+        private MemorySegment next;
+        private MemorySegment current;
 
         SegmentIterator(int nKeys)
         {
             keysPerChunk = nKeys / segments() / chunkSize + 1;
-            snaphotBuffer = ByteBuffer.allocate(chunkSize + Util.CHUNK_OFF_DATA);
+            snaphotBuffer = MemorySegment.ofArray(new byte[chunkSize + Util.CHUNK_OFF_DATA]);
         }
 
         public void close()
@@ -699,12 +668,12 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
             return next != null;
         }
 
-        public ByteBuffer next()
+        public MemorySegment next()
         {
             if (eod)
                 throw new NoSuchElementException();
 
-            ByteBuffer r;
+            MemorySegment r;
             if (next == null)
             {
                 r = computeNext();
@@ -718,7 +687,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
             if (!eod && r != null)
             {
                 current = r;
-                return r.duplicate();
+                return r;
             }
 
             throw new NoSuchElementException();
@@ -726,7 +695,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
 
         public void remove()
         {
-            ByteBuffer c = current;
+            MemorySegment c = current;
             if (eod || c == null)
                 throw new NoSuchElementException();
             current = null;
@@ -735,7 +704,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
             maps[seg - 1].removeEntry(keySource(c));
         }
 
-        private ByteBuffer computeNext()
+        private MemorySegment computeNext()
         {
             while (true)
             {
@@ -757,7 +726,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
     {
         return new CloseableIterator<K>()
         {
-            private final CloseableIterator<ByteBuffer> wrapped = hotKeyBufferIterator(n);
+            private final CloseableIterator<MemorySegment> wrapped = hotKeyBufferIterator(n);
 
             public void close() throws IOException
             {
@@ -771,8 +740,8 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
 
             public K next()
             {
-                ByteBuffer bb = wrapped.next();
-                return keySerializer.deserialize(bb);
+                MemorySegment seg = wrapped.next();
+                return keySerializer.deserialize(seg);
             }
 
             public void remove()
@@ -782,7 +751,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
         };
     }
 
-    public CloseableIterator<ByteBuffer> hotKeyBufferIterator(int n)
+    public CloseableIterator<MemorySegment> hotKeyBufferIterator(int n)
     {
         return new SegmentIterator(n);
     }
@@ -792,7 +761,7 @@ public final class OHCacheChunkedImpl<K, V> implements OHCache<K, V>
         return hotKeyIterator(Integer.MAX_VALUE);
     }
 
-    public CloseableIterator<ByteBuffer> keyBufferIterator()
+    public CloseableIterator<MemorySegment> keyBufferIterator()
     {
         return hotKeyBufferIterator(Integer.MAX_VALUE);
     }

@@ -15,7 +15,8 @@
  */
 package org.caffinitas.ohc.jmh;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 import org.caffinitas.ohc.CacheSerializer;
 
@@ -23,16 +24,17 @@ public final class Utils
 {
     public static final CacheSerializer<byte[]> byteArraySerializer = new CacheSerializer<byte[]>()
     {
-        public void serialize(byte[] bytes, ByteBuffer buf)
+        public void serialize(byte[] bytes, MemorySegment buf)
         {
-            buf.putInt(bytes.length);
-            buf.put(bytes);
+            buf.set(ValueLayout.JAVA_INT_UNALIGNED, 0, bytes.length);
+            MemorySegment.copy(bytes, 0, buf, ValueLayout.JAVA_BYTE, 4, bytes.length);
         }
 
-        public byte[] deserialize(ByteBuffer buf)
+        public byte[] deserialize(MemorySegment buf)
         {
-            byte[] arr = new byte[buf.getInt()];
-            buf.get(arr);
+            int len = buf.get(ValueLayout.JAVA_INT_UNALIGNED, 0);
+            byte[] arr = new byte[len];
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, 4, arr, 0, len);
             return arr;
         }
 
@@ -44,14 +46,14 @@ public final class Utils
 
     public static final CacheSerializer<Integer> intSerializer = new CacheSerializer<Integer>()
     {
-        public void serialize(Integer integer, ByteBuffer buf)
+        public void serialize(Integer integer, MemorySegment buf)
         {
-            buf.putInt(integer);
+            buf.set(ValueLayout.JAVA_INT_UNALIGNED, 0, integer);
         }
 
-        public Integer deserialize(ByteBuffer buf)
+        public Integer deserialize(MemorySegment buf)
         {
-            return buf.getInt();
+            return buf.get(ValueLayout.JAVA_INT_UNALIGNED, 0);
         }
 
         public int serializedSize(Integer integer)

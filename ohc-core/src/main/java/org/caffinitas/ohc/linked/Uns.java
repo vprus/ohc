@@ -16,10 +16,9 @@
 package org.caffinitas.ohc.linked;
 
 import java.io.IOException;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -32,8 +31,6 @@ import org.caffinitas.ohc.alloc.JNANativeAllocator;
 import org.caffinitas.ohc.alloc.UnsafeAllocator;
 
 import sun.misc.Unsafe;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferPosition;
 
 final class Uns
 {
@@ -357,82 +354,75 @@ final class Uns
         allocator.free(address);
     }
 
-    private static final Class<?> DIRECT_BYTE_BUFFER_CLASS;
-    private static final Class<?> DIRECT_BYTE_BUFFER_CLASS_R;
-    private static final long DIRECT_BYTE_BUFFER_ADDRESS_OFFSET;
-    private static final long DIRECT_BYTE_BUFFER_CAPACITY_OFFSET;
-    private static final long DIRECT_BYTE_BUFFER_LIMIT_OFFSET;
-
-    static
+    /**
+     * Creates a {@link MemorySegment} view of native memory at the given address and offset.
+     *
+     * <p><strong>Lifecycle note:</strong> The caller is responsible for ensuring the underlying
+     * native memory remains valid for as long as the returned segment (or any derived segment) is
+     * used. The segment does not own the memory; {@link #free(long)} must still be called
+     * separately to release the allocation.</p>
+     *
+     * @param address base address of the native allocation
+     * @param offset  byte offset from {@code address}
+     * @param len     number of bytes to expose
+     * @return a {@link MemorySegment} backed by the specified native memory region
+     */
+    @SuppressWarnings("restricted")
+    static MemorySegment memorySegmentFor(long address, long offset, long len)
     {
-        try
-        {
-            ByteBuffer directBuffer = ByteBuffer.allocateDirect(0);
-            ByteBuffer directReadOnly = directBuffer.asReadOnlyBuffer();
-            Class<?> clazz = directBuffer.getClass();
-            Class<?> clazzReadOnly = directReadOnly.getClass();
-            DIRECT_BYTE_BUFFER_ADDRESS_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("address"));
-            DIRECT_BYTE_BUFFER_CAPACITY_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("capacity"));
-            DIRECT_BYTE_BUFFER_LIMIT_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("limit"));
-            DIRECT_BYTE_BUFFER_CLASS = clazz;
-            DIRECT_BYTE_BUFFER_CLASS_R = clazzReadOnly;
-        }
-        catch (NoSuchFieldException e)
-        {
-            throw new RuntimeException(e);
-        }
+        return MemorySegment.ofAddress(address + offset).reinterpret(len);
     }
 
-    static ByteBuffer directBufferFor(long address, long offset, long len, boolean readOnly)
+    /**
+     * Creates a {@link MemorySegment} whose accessibility is tied to the given {@link Arena}.
+     * When {@code arena} is closed the segment becomes inaccessible.
+     *
+     * @param address base address of the native allocation
+     * @param offset  byte offset from {@code address}
+     * @param len     number of bytes to expose
+     * @param arena   arena that controls segment lifetime
+     * @return a {@link MemorySegment} backed by the specified native memory region
+     */
+    @SuppressWarnings("restricted")
+    static MemorySegment memorySegmentFor(long address, long offset, long len, Arena arena)
     {
-        if (len > Integer.MAX_VALUE || len < 0L)
-            throw new IllegalArgumentException();
-        try
-        {
-            ByteBuffer bb = (ByteBuffer) unsafe.allocateInstance(readOnly ? DIRECT_BYTE_BUFFER_CLASS_R : DIRECT_BYTE_BUFFER_CLASS);
-            unsafe.putLong(bb, DIRECT_BYTE_BUFFER_ADDRESS_OFFSET, address + offset);
-            unsafe.putInt(bb, DIRECT_BYTE_BUFFER_CAPACITY_OFFSET, (int) len);
-            unsafe.putInt(bb, DIRECT_BYTE_BUFFER_LIMIT_OFFSET, (int) len);
-            bb.order(ByteOrder.BIG_ENDIAN);
-            return bb;
-        }
-        catch (Error e)
-        {
-            throw e;
-        }
-        catch (Throwable t)
-        {
-            throw new RuntimeException(t);
-        }
+        return MemorySegment.ofAddress(address + offset).reinterpret(len, arena, null);
     }
 
-    static void invalidateDirectBuffer(ByteBuffer buffer)
-    {
-        byteBufferPosition(buffer, 0);
-        unsafe.putInt(buffer, DIRECT_BYTE_BUFFER_CAPACITY_OFFSET, 0);
-        unsafe.putInt(buffer, DIRECT_BYTE_BUFFER_LIMIT_OFFSET, 0);
-        unsafe.putLong(buffer, DIRECT_BYTE_BUFFER_ADDRESS_OFFSET, 0L);
-    }
-
-    static ByteBuffer keyBufferR(long hashEntryAdr)
+    static MemorySegment keySegmentR(long hashEntryAdr)
     {
         long keyLen = HashEntries.getKeyLen(hashEntryAdr);
-        return Uns.directBufferFor(hashEntryAdr + Util.ENTRY_OFF_DATA, 0, keyLen, true);
+        return memorySegmentFor(hashEntryAdr + Util.ENTRY_OFF_DATA, 0, keyLen).asReadOnly();
     }
 
-    static ByteBuffer keyBuffer(long hashEntryAdr, long keyLen)
+    static MemorySegment keySegment(long hashEntryAdr, long keyLen)
     {
-        return Uns.directBufferFor(hashEntryAdr + Util.ENTRY_OFF_DATA, 0, keyLen, false);
+        return memorySegmentFor(hashEntryAdr + Util.ENTRY_OFF_DATA, 0, keyLen);
     }
 
-    static ByteBuffer valueBufferR(long hashEntryAdr)
+    static MemorySegment valueSegmentR(long hashEntryAdr)
     {
         long valueLen = HashEntries.getValueLen(hashEntryAdr);
-        return Uns.directBufferFor(hashEntryAdr + Util.ENTRY_OFF_DATA + Util.roundUpTo8(HashEntries.getKeyLen(hashEntryAdr)), 0, valueLen, true);
+        return memorySegmentFor(hashEntryAdr + Util.ENTRY_OFF_DATA + Util.roundUpTo8(HashEntries.getKeyLen(hashEntryAdr)), 0, valueLen).asReadOnly();
     }
 
-    static ByteBuffer valueBuffer(long hashEntryAdr, long keyLen, long valueLen)
+    static MemorySegment valueSegment(long hashEntryAdr, long keyLen, long valueLen)
     {
-        return Uns.directBufferFor(hashEntryAdr + Util.ENTRY_OFF_DATA + Util.roundUpTo8(keyLen), 0, valueLen, false);
+        return memorySegmentFor(hashEntryAdr + Util.ENTRY_OFF_DATA + Util.roundUpTo8(keyLen), 0, valueLen);
+    }
+
+    /**
+     * Creates a read-only {@link MemorySegment} view of a range within an off-heap hash entry,
+     * whose validity is tied to {@code arena}.  Closing {@code arena} invalidates the segment.
+     *
+     * @param address base address of the native allocation
+     * @param offset  byte offset within the allocation
+     * @param len     number of bytes to expose
+     * @param arena   arena controlling the segment's accessibility lifetime
+     * @return a read-only {@link MemorySegment}
+     */
+    static MemorySegment valueSegmentR(long address, long offset, long len, Arena arena)
+    {
+        return memorySegmentFor(address, offset, len, arena).asReadOnly();
     }
 }

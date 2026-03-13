@@ -19,8 +19,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 
-import static org.caffinitas.ohc.util.ByteBufferCompat.*;
-
 final class BufferedReadableByteChannel implements ReadableByteChannel
 {
     private final ReadableByteChannel delegate;
@@ -32,8 +30,8 @@ final class BufferedReadableByteChannel implements ReadableByteChannel
     {
         this.delegate = delegate;
         this.bufferAddress = Uns.allocateIOException(bufferSize);
-        this.buffer = Uns.directBufferFor(bufferAddress, 0L, bufferSize, false);
-        byteBufferPosition(this.buffer, bufferSize);
+        this.buffer = Uns.memorySegmentFor(bufferAddress, 0L, bufferSize).asByteBuffer();
+        this.buffer.position(bufferSize);
     }
 
     public int read(ByteBuffer dst) throws IOException
@@ -48,14 +46,14 @@ final class BufferedReadableByteChannel implements ReadableByteChannel
             int br = buffer.remaining();
             if (br == 0)
             {
-                byteBufferClear(buffer);
+                buffer.clear();
                 int rd = delegate.read(buffer);
                 if (rd == -1)
                 {
                     rd = dst.position() - p;
                     return rd == 0 ? -1 : rd;
                 }
-                byteBufferFlip(buffer);
+                buffer.flip();
                 br = buffer.remaining();
             }
 
@@ -64,9 +62,9 @@ final class BufferedReadableByteChannel implements ReadableByteChannel
             else
             {
                 int lim = buffer.limit();
-                byteBufferLimit(buffer, buffer.position() + dr);
+                buffer.limit(buffer.position() + dr);
                 dst.put(buffer);
-                byteBufferLimit(buffer, lim);
+                buffer.limit(lim);
             }
         }
     }

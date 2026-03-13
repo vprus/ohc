@@ -23,8 +23,8 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.nio.BufferUnderflowException;
-import java.nio.ReadOnlyBufferException;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 public class DirectAccessTest
 {
@@ -61,27 +61,26 @@ public class DirectAccessTest
                         s = s + "42";
                     byte[] bytes = s.getBytes(Charsets.UTF_8);
 
-                    Assert.assertEquals(direct.buffer().capacity(), bytes.length + 2);
-                    Assert.assertEquals(direct.buffer().limit(), bytes.length + 2);
+                    Assert.assertEquals(direct.segment().byteSize(), bytes.length + 2);
 
-                    Assert.assertEquals(TestUtils.stringSerializer.deserialize(direct.buffer()), s);
+                    Assert.assertEquals(TestUtils.stringSerializer.deserialize(direct.segment()), s);
 
                     try
                     {
-                        direct.buffer().get();
+                        direct.segment().get(ValueLayout.JAVA_BYTE, bytes.length + 2);
                         Assert.fail();
                     }
-                    catch (BufferUnderflowException e)
+                    catch (IndexOutOfBoundsException e)
                     {
                         // fine
                     }
 
                     try
                     {
-                        direct.buffer().put(0, (byte) 0);
+                        direct.segment().set(ValueLayout.JAVA_BYTE, 0, (byte) 0);
                         Assert.fail();
                     }
-                    catch (ReadOnlyBufferException e)
+                    catch (UnsupportedOperationException e)
                     {
                         // fine
                     }

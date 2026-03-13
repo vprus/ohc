@@ -15,15 +15,16 @@
  */
 package org.caffinitas.ohc.chunked;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.zip.CRC32;
 
 class Crc32Hash extends Hasher
 {
-    long hash(ByteBuffer buffer)
+    long hash(MemorySegment segment)
     {
         CRC32 crc = new CRC32();
-        crc.update(buffer);
+        crc.update(segment.asByteBuffer());
         return crc.getValue();
     }
 }
