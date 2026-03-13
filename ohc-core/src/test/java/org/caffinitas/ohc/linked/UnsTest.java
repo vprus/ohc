@@ -18,16 +18,13 @@ package org.caffinitas.ohc.linked;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 import sun.misc.Unsafe;
-import sun.nio.ch.DirectBuffer;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.lang.reflect.Field;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Random;
 
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferClear;
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferFlip;
 import static org.testng.Assert.*;
 
 public class UnsTest
@@ -365,13 +362,13 @@ public class UnsTest
 
             for (int i = 0; i < 14; i++)
             {
-                ByteBuffer buf = Uns.directBufferFor(adr, i, 8, false);
+                MemorySegment buf = Uns.memorySegmentFor(adr, i, 8);
                 byte l = Uns.getByte(adr, i);
-                assertEquals(buf.get(0), Uns.getByte(adr, i));
+                assertEquals(buf.get(ValueLayout.JAVA_BYTE, 0), Uns.getByte(adr, i));
                 assertEquals(unsafe.getByte(adr + i), Uns.getByte(adr, i));
 
                 Uns.putByte(adr, i, l);
-                assertEquals(buf.get(0), l);
+                assertEquals(buf.get(ValueLayout.JAVA_BYTE, 0), l);
                 assertEquals(unsafe.getByte(adr + i), l);
             }
         }
