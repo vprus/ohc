@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.lang.foreign.MemorySegment;
 import java.lang.foreign.ValueLayout;
 import java.lang.reflect.Field;
-import java.util.Random;
 
 import static org.testng.Assert.*;
 
@@ -38,7 +37,6 @@ public class UnsTest
     private static final Unsafe unsafe;
 
     static final int CAPACITY = 65536;
-    static final ByteBuffer directBuffer;
 
     static
     {
@@ -49,8 +47,6 @@ public class UnsTest
             unsafe = (Unsafe) field.get(null);
             if (unsafe.addressSize() > 8)
                 throw new RuntimeException("Address size " + unsafe.addressSize() + " not supported yet (max 8 bytes)");
-
-            directBuffer = ByteBuffer.allocateDirect(CAPACITY);
         }
         catch (Exception e)
         {
@@ -58,95 +54,33 @@ public class UnsTest
         }
     }
 
-    private static void fillRandom()
-    {
-        Random r = new Random();
-        byteBufferClear(directBuffer);
-        while (directBuffer.remaining() >= 4)
-            directBuffer.putInt(r.nextInt());
-        byteBufferClear(directBuffer);
-    }
-
     @Test
-    public void testDirectBufferFor() throws Exception
+    public void testMemorySegmentFor() throws Exception
     {
-        fillRandom();
-
-        ByteBuffer buf = Uns.directBufferFor(((DirectBuffer) directBuffer).address(), 0, directBuffer.capacity(), false);
-
-        for (int i = 0; i < CAPACITY; i++)
+        long adr = Uns.allocate(CAPACITY);
+        try
         {
-            byte b = buf.get();
-            byte d = directBuffer.get();
-            assertEquals(b, d);
+            // write known bytes via unsafe
+            for (int i = 0; i < CAPACITY; i++)
+                unsafe.putByte(adr + i, (byte) (i & 0xFF));
 
-            assertEquals(buf.position(), directBuffer.position());
-            assertEquals(buf.limit(), directBuffer.limit());
-            assertEquals(buf.remaining(), directBuffer.remaining());
-            assertEquals(buf.capacity(), directBuffer.capacity());
+            MemorySegment seg = Uns.memorySegmentFor(adr, 0, CAPACITY);
+            assertEquals(seg.byteSize(), CAPACITY);
+
+            for (int i = 0; i < CAPACITY; i++)
+                assertEquals(seg.get(ValueLayout.JAVA_BYTE, i), (byte) (i & 0xFF));
+
+            // absolute int/long access
+            for (int i = 0; i < CAPACITY - 7; i += 8)
+            {
+                assertEquals(seg.get(ValueLayout.JAVA_LONG_UNALIGNED, i), unsafe.getLong(adr + i));
+                assertEquals(seg.get(ValueLayout.JAVA_INT_UNALIGNED, i), unsafe.getInt(adr + i));
+                assertEquals(seg.get(ValueLayout.JAVA_SHORT_UNALIGNED, i), unsafe.getShort(adr + i));
+            }
         }
-
-        byteBufferClear(buf);
-        byteBufferClear(directBuffer);
-
-        while (buf.remaining() >= 8)
+        finally
         {
-            long b = buf.getLong();
-            long d = directBuffer.getLong();
-            assertEquals(b, d);
-
-            assertEquals(buf.position(), directBuffer.position());
-            assertEquals(buf.remaining(), directBuffer.remaining());
-        }
-
-        while (buf.remaining() >= 4)
-        {
-            int b = buf.getInt();
-            int d = directBuffer.getInt();
-            assertEquals(b, d);
-
-            assertEquals(buf.position(), directBuffer.position());
-            assertEquals(buf.remaining(), directBuffer.remaining());
-        }
-
-        for (int i = 0; i < CAPACITY; i++)
-        {
-            byte b = buf.get(i);
-            byte d = directBuffer.get(i);
-            assertEquals(b, d);
-
-            if (i >= CAPACITY - 1)
-                continue;
-
-            char bufChar = buf.getChar(i);
-            char dirChar = directBuffer.getChar(i);
-            short bufShort = buf.getShort(i);
-            short dirShort = directBuffer.getShort(i);
-
-            assertEquals(bufChar, dirChar);
-            assertEquals(bufShort, dirShort);
-
-            if (i >= CAPACITY - 3)
-                continue;
-
-            int bufInt = buf.getInt(i);
-            int dirInt = directBuffer.getInt(i);
-            float bufFloat = buf.getFloat(i);
-            float dirFloat = directBuffer.getFloat(i);
-
-            assertEquals(bufInt, dirInt);
-            assertEquals(bufFloat, dirFloat);
-
-            if (i >= CAPACITY - 7)
-                continue;
-
-            long bufLong = buf.getLong(i);
-            long dirLong = directBuffer.getLong(i);
-            double bufDouble = buf.getDouble(i);
-            double dirDouble = directBuffer.getDouble(i);
-
-            assertEquals(bufLong, dirLong);
-            assertEquals(bufDouble, dirDouble);
+            Uns.free(adr);
         }
     }
 
@@ -263,23 +197,11 @@ public class UnsTest
     public void testGetLongFromByteArray() throws Exception
     {
         byte[] arr = TestUtils.randomBytes(32);
-        ByteOrder order = directBuffer.order();
-        directBuffer.order(ByteOrder.nativeOrder());
-        try
+        for (int i = 0; i < 14; i++)
         {
-            for (int i = 0; i < 14; i++)
-            {
-                long u = Uns.getLongFromByteArray(arr, i);
-                byteBufferClear(directBuffer);
-                directBuffer.put(arr);
-                byteBufferFlip(directBuffer);
-                long b = directBuffer.getLong(i);
-                assertEquals(b, u);
-            }
-        }
-        finally
-        {
-            directBuffer.order(order);
+            long u = Uns.getLongFromByteArray(arr, i);
+            long expected = unsafe.getLong(arr, (long) sun.misc.Unsafe.ARRAY_BYTE_BASE_OFFSET + i);
+            assertEquals(u, expected);
         }
     }
 

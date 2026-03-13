@@ -19,7 +19,7 @@ import org.caffinitas.ohc.*;
 import org.caffinitas.ohc.histo.EstimatedHistogram;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Collections;
@@ -183,7 +183,7 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         if (value == null)
             return null;
 
-        return valueSerializer.deserialize(ByteBuffer.wrap(value));
+        return valueSerializer.deserialize(MemorySegment.ofArray(value));
     }
 
     public boolean containsKey(K key)
@@ -219,18 +219,18 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         {
             protected K construct(HeapKeyBuffer next)
             {
-                return keySerializer.deserialize(ByteBuffer.wrap(next.array()));
+                return keySerializer.deserialize(MemorySegment.ofArray(next.array()));
             }
         };
     }
 
-    public CloseableIterator<ByteBuffer> hotKeyBufferIterator(int n)
+    public CloseableIterator<MemorySegment> hotKeyBufferIterator(int n)
     {
-        return new AbstractHotKeyIter<ByteBuffer>(n)
+        return new AbstractHotKeyIter<MemorySegment>(n)
         {
-            protected ByteBuffer construct(HeapKeyBuffer next)
+            protected MemorySegment construct(HeapKeyBuffer next)
             {
-                return ByteBuffer.wrap(next.array());
+                return MemorySegment.ofArray(next.array());
             }
         };
     }
@@ -241,18 +241,18 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         {
             protected K construct(HeapKeyBuffer next)
             {
-                return keySerializer.deserialize(ByteBuffer.wrap(next.array()));
+                return keySerializer.deserialize(MemorySegment.ofArray(next.array()));
             }
         };
     }
 
-    public CloseableIterator<ByteBuffer> keyBufferIterator()
+    public CloseableIterator<MemorySegment> keyBufferIterator()
     {
-        return new AbstractKeyIter<ByteBuffer>()
+        return new AbstractKeyIter<MemorySegment>()
         {
-            protected ByteBuffer construct(HeapKeyBuffer next)
+            protected MemorySegment construct(HeapKeyBuffer next)
             {
-                return ByteBuffer.wrap(next.array());
+                return MemorySegment.ofArray(next.array());
             }
         };
     }
@@ -543,16 +543,15 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
     {
         int size = keySerializer.serializedSize(o);
 
-        ByteBuffer keyBuffer = ByteBuffer.allocate(size);
-        keySerializer.serialize(o, keyBuffer);
-        assert(keyBuffer.position() == keyBuffer.capacity()) && (keyBuffer.capacity() == size);
-        return new HeapKeyBuffer(keyBuffer.array()).finish(hasher);
+        byte[] arr = new byte[size];
+        keySerializer.serialize(o, MemorySegment.ofArray(arr));
+        return new HeapKeyBuffer(arr).finish(hasher);
     }
 
     private byte[] value(V value)
     {
-        ByteBuffer buf = ByteBuffer.allocate(valueSerializer.serializedSize(value));
-        valueSerializer.serialize(value, buf);
-        return buf.array();
+        byte[] arr = new byte[valueSerializer.serializedSize(value)];
+        valueSerializer.serialize(value, MemorySegment.ofArray(arr));
+        return arr;
     }
 }

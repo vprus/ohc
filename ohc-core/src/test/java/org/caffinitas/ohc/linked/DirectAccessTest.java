@@ -80,9 +80,9 @@ public class DirectAccessTest
                         direct.segment().set(ValueLayout.JAVA_BYTE, 0, (byte) 0);
                         Assert.fail();
                     }
-                    catch (UnsupportedOperationException e)
+                    catch (IllegalArgumentException e)
                     {
-                        // fine
+                        // fine - segment is read-only
                     }
                 }
             }

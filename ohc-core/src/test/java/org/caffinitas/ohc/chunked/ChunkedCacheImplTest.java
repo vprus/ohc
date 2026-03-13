@@ -16,7 +16,7 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,7 +36,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferFlip;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -517,17 +516,15 @@ public class ChunkedCacheImplTest
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            List<ByteBuffer> got = new ArrayList<>();
+            List<MemorySegment> got = new ArrayList<>();
             int serSize = TestUtils.intSerializer.serializedSize(0);
             int cnt = 0;
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer bb = ByteBuffer.allocate(serSize);
-                    bb.put(iter.next());
-                    byteBufferFlip(bb);
-                    got.add(bb);
+                    MemorySegment seg = iter.next();
+                    got.add(MemorySegment.ofArray(seg.toArray(java.lang.foreign.ValueLayout.JAVA_BYTE)));
                     iter.remove();
                     cnt ++;
                 }
@@ -536,13 +533,13 @@ public class ChunkedCacheImplTest
             Assert.assertEquals(got.size(), 100);
             for (int i = 0; i < 100; i++)
             {
-                ByteBuffer bb = ByteBuffer.allocate(serSize);
-                TestUtils.intSerializer.serialize(i, bb);
-                byteBufferFlip(bb);
-                Assert.assertTrue(got.indexOf(bb) != -1);
+                byte[] arr = new byte[serSize];
+                TestUtils.intSerializer.serialize(i, MemorySegment.ofArray(arr));
+                MemorySegment expected = MemorySegment.ofArray(arr);
+                Assert.assertTrue(got.stream().anyMatch(s -> s.mismatch(expected) == -1));
             }
 
-            for (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator();iter.hasNext();)
+            for (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator();iter.hasNext();)
                 System.out.println(iter.next());
 
             for (CloseableIterator<Integer> iter = cache.keyIterator();iter.hasNext();)
@@ -566,7 +563,7 @@ public class ChunkedCacheImplTest
 
             Assert.assertEquals(cache.stats().getSize(), 100);
 
-            try (CloseableIterator<ByteBuffer> iProd = cache.hotKeyBufferIterator(10))
+            try (CloseableIterator<MemorySegment> iProd = cache.hotKeyBufferIterator(10))
             {
                 int count = 0;
                 while (iProd.hasNext())
@@ -593,14 +590,12 @@ public class ChunkedCacheImplTest
             Assert.assertEquals(cache.stats().getSize(), 100);
 
             Set<Integer> keys = new HashSet<>();
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer k = iter.next();
-                    ByteBuffer k2 = ByteBuffer.allocate(k.remaining());
-                    k2.put(k);
-                    Integer key = TestUtils.intSerializer.deserialize(ByteBuffer.wrap(k2.array()));
+                    MemorySegment k = iter.next();
+                    Integer key = TestUtils.intSerializer.deserialize(k);
                     Assert.assertTrue(keys.add(key));
                 }
             }
@@ -620,7 +615,7 @@ public class ChunkedCacheImplTest
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {

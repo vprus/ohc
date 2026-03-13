@@ -16,7 +16,7 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.HashSet;
@@ -181,7 +181,7 @@ public class DoubleCheckCacheImpl<K, V> implements OHCache<K, V>
         );
     }
 
-    public CloseableIterator<ByteBuffer> hotKeyBufferIterator(int n)
+    public CloseableIterator<MemorySegment> hotKeyBufferIterator(int n)
     {
         return new CheckIterator<>(
                                    prod.hotKeyBufferIterator(n),
@@ -190,7 +190,7 @@ public class DoubleCheckCacheImpl<K, V> implements OHCache<K, V>
         );
     }
 
-    public CloseableIterator<ByteBuffer> keyBufferIterator()
+    public CloseableIterator<MemorySegment> keyBufferIterator()
     {
         return new CheckIterator<>(
                                    prod.keyBufferIterator(),

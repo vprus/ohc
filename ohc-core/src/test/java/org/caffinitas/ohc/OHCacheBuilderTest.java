@@ -1,9 +1,9 @@
 package org.caffinitas.ohc;
 
+import java.lang.foreign.MemorySegment;
 import java.util.HashSet;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.nio.ByteBuffer;
 
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -140,12 +140,12 @@ public class OHCacheBuilderTest
 
         CacheSerializer<String> inst = new CacheSerializer<String>()
         {
-            public void serialize(String s, ByteBuffer out)
+            public void serialize(String s, MemorySegment out)
             {
 
             }
 
-            public String deserialize(ByteBuffer in)
+            public String deserialize(MemorySegment in)
             {
                 return null;
             }
@@ -167,12 +167,12 @@ public class OHCacheBuilderTest
 
         CacheSerializer<String> inst = new CacheSerializer<String>()
         {
-            public void serialize(String s, ByteBuffer out)
+            public void serialize(String s, MemorySegment out)
             {
 
             }
 
-            public String deserialize(ByteBuffer in)
+            public String deserialize(MemorySegment in)
             {
                 return null;
             }
