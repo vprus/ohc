@@ -306,7 +306,7 @@ public class UnsTest
         long adr = Uns.allocate(128);
         try
         {
-            for (int i = 0; i < 120; i++)
+            for (int i = 0; i < 120; i += 4)
             {
                 String loop = "at loop #" + i;
                 long v = Uns.getInt(adr, i);
@@ -326,6 +326,20 @@ public class UnsTest
             assertTrue(Uns.decrement(adr, 8));
             Uns.putLong(adr, 8, 2);
             assertFalse(Uns.decrement(adr, 8));
+        }
+        finally
+        {
+            Uns.free(adr);
+        }
+    }
+
+    @Test(expectedExceptions = IllegalArgumentException.class)
+    public void testIncrementRequiresAlignedOffset() throws Exception
+    {
+        long adr = Uns.allocate(128);
+        try
+        {
+            Uns.increment(adr, 1);
         }
         finally
         {

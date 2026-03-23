@@ -251,6 +251,7 @@ final class Uns
     static boolean decrement(long address, long offset)
     {
         validate(address, offset, 4L);
+        validateAtomicIntAccess(address, offset);
         long v = unsafe.getAndAddInt(null, address + offset, -1);
         return v == 1;
     }
@@ -258,7 +259,14 @@ final class Uns
     static void increment(long address, long offset)
     {
         validate(address, offset, 4L);
+        validateAtomicIntAccess(address, offset);
         unsafe.getAndAddInt(null, address + offset, 1);
+    }
+
+    private static void validateAtomicIntAccess(long address, long offset)
+    {
+        if (((address + offset) & 3L) != 0L)
+            throw new IllegalArgumentException("Atomic int access requires a 4-byte aligned address");
     }
 
     static void copyMemory(byte[] arr, int off, long address, long offset, long len)
