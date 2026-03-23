@@ -16,7 +16,7 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Collections;
@@ -37,8 +37,6 @@ import org.caffinitas.ohc.OHCache;
 import org.caffinitas.ohc.OHCacheBuilder;
 import org.caffinitas.ohc.OHCacheStats;
 import org.caffinitas.ohc.histo.EstimatedHistogram;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferFlip;
 
 /**
  * This is a {@link OHCache} implementation used to validate functionality of
@@ -189,7 +187,7 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         if (value == null)
             return null;
 
-        return valueSerializer.deserialize(ByteBuffer.wrap(value));
+        return valueSerializer.deserialize(MemorySegment.ofArray(value));
     }
 
     public boolean containsKey(K key)
@@ -225,18 +223,18 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         {
             protected K construct(KeyBuffer next)
             {
-                return keySerializer.deserialize(next.buffer());
+                return keySerializer.deserialize(next.segment());
             }
         };
     }
 
-    public CloseableIterator<ByteBuffer> hotKeyBufferIterator(int n)
+    public CloseableIterator<MemorySegment> hotKeyBufferIterator(int n)
     {
-        return new AbstractHotKeyIter<ByteBuffer>(n)
+        return new AbstractHotKeyIter<MemorySegment>(n)
         {
-            protected ByteBuffer construct(KeyBuffer next)
+            protected MemorySegment construct(KeyBuffer next)
             {
-                return next.buffer();
+                return next.segment();
             }
         };
     }
@@ -247,18 +245,18 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
         {
             protected K construct(KeyBuffer next)
             {
-                return keySerializer.deserialize(next.buffer());
+                return keySerializer.deserialize(next.segment());
             }
         };
     }
 
-    public CloseableIterator<ByteBuffer> keyBufferIterator()
+    public CloseableIterator<MemorySegment> keyBufferIterator()
     {
-        return new AbstractKeyIter<ByteBuffer>()
+        return new AbstractKeyIter<MemorySegment>()
         {
-            protected ByteBuffer construct(KeyBuffer next)
+            protected MemorySegment construct(KeyBuffer next)
             {
-                return next.buffer();
+                return next.segment();
             }
         };
     }
@@ -549,17 +547,15 @@ final class CheckOHCacheImpl<K, V> implements OHCache<K, V>
     {
         int size = keySerializer.serializedSize(o);
 
-        ByteBuffer keyBuffer = ByteBuffer.allocate(size);
-        keySerializer.serialize(o, keyBuffer);
-        assert(keyBuffer.position() == keyBuffer.capacity()) && (keyBuffer.capacity() == size);
-        byteBufferFlip(keyBuffer);
-        return new KeyBuffer(keyBuffer).finish(hasher);
+        MemorySegment keySegment = MemorySegment.ofArray(new byte[size]);
+        keySerializer.serialize(o, keySegment);
+        return new KeyBuffer(keySegment).finish(hasher);
     }
 
     private byte[] value(V value)
     {
-        ByteBuffer buf = ByteBuffer.allocate(valueSerializer.serializedSize(value));
-        valueSerializer.serialize(value, buf);
-        return buf.array();
+        byte[] arr = new byte[valueSerializer.serializedSize(value)];
+        valueSerializer.serialize(value, MemorySegment.ofArray(arr));
+        return arr;
     }
 }

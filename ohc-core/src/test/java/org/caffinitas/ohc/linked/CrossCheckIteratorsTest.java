@@ -9,7 +9,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
@@ -145,7 +145,7 @@ public class CrossCheckIteratorsTest extends CrossCheckTestBase {
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
@@ -173,18 +173,18 @@ public class CrossCheckIteratorsTest extends CrossCheckTestBase {
 
             Assert.assertEquals(cache.stats().getSize(), 100);
 
-            try (CloseableIterator<ByteBuffer> iProd = cache.prod.hotKeyBufferIterator(10))
+            try (CloseableIterator<MemorySegment> iProd = cache.prod.hotKeyBufferIterator(10))
             {
-                try (CloseableIterator<ByteBuffer> iCheck = cache.check.hotKeyBufferIterator(10))
+                try (CloseableIterator<MemorySegment> iCheck = cache.check.hotKeyBufferIterator(10))
                 {
                     while (iProd.hasNext())
                     {
                         assertTrue(iCheck.hasNext());
 
-                        ByteBuffer kProd = iProd.next();
-                        ByteBuffer kCheck = iCheck.next();
+                        MemorySegment kProd = iProd.next();
+                        MemorySegment kCheck = iCheck.next();
 
-                        Assert.assertEquals(kProd, kCheck);
+                        Assert.assertEquals(kProd.mismatch(kCheck), -1L);
                     }
 
                     Assert.assertFalse(iCheck.hasNext());
@@ -206,14 +206,12 @@ public class CrossCheckIteratorsTest extends CrossCheckTestBase {
             Assert.assertEquals(cache.stats().getSize(), 100);
 
             Set<Integer> keys = new HashSet<>();
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer k = iter.next();
-                    ByteBuffer k2 = ByteBuffer.allocate(k.remaining());
-                    k2.put(k);
-                    Integer key = TestUtils.intSerializer.deserialize(ByteBuffer.wrap(k2.array()));
+                    MemorySegment k = iter.next();
+                    Integer key = TestUtils.intSerializer.deserialize(k);
                     assertTrue(keys.add(key));
                 }
             }
@@ -233,7 +231,7 @@ public class CrossCheckIteratorsTest extends CrossCheckTestBase {
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {

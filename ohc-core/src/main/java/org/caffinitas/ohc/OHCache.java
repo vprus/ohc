@@ -17,7 +17,7 @@ package org.caffinitas.ohc;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.util.Map;
@@ -148,13 +148,13 @@ public interface OHCache<K, V> extends Closeable
     boolean containsKey(K key);
 
     /**
-     * Returns a closeable byte buffer.
+     * Returns direct access to the cached value.
      * You must close the returned {@link DirectValueAccess} instance after use.
-     * After closing, you must not call any of the methods of the {@link java.nio.ByteBuffer}
-     * returned by {@link DirectValueAccess#buffer()}.
+     * After closing, you must not access the {@link java.lang.foreign.MemorySegment}
+     * returned by {@link DirectValueAccess#segment()}.
      *
      * @param key the key of the value to retrieve
-     * @return reference-counted byte buffer or {@code null} if key does not exist.
+     * @return direct value access or {@code null} if key does not exist.
      */
     DirectValueAccess getDirect(K key);
 
@@ -257,29 +257,29 @@ public interface OHCache<K, V> extends Closeable
     CloseableIterator<K> keyIterator();
 
     /**
-     * Builds an iterator over all keys returning direct byte buffers.
-     * Do not use a returned {@code ByteBuffer} after calling any method on the iterator.
+     * Builds an iterator over the N most recently used keys returning read-only {@link MemorySegment}s.
+     * Do not use a returned {@code MemorySegment} after calling any method on the iterator.
      * You must call {@code close()} on the returned iterator.
      * <p>
      *     Note: During a rehash, the implementation might return keys twice or not at all.
      * </p>
      *
      * @param n the N most recently used keys
-     * @return closeable iterator over byte-buffers
+     * @return closeable iterator over memory segments
      */
-    CloseableIterator<ByteBuffer> hotKeyBufferIterator(int n);
+    CloseableIterator<MemorySegment> hotKeyBufferIterator(int n);
 
     /**
-     * Builds an iterator over all keys returning direct byte buffers.
-     * Do not use a returned {@code ByteBuffer} after calling any method on the iterator.
+     * Builds an iterator over all keys returning read-only {@link MemorySegment}s.
+     * Do not use a returned {@code MemorySegment} after calling any method on the iterator.
      * You must call {@code close()} on the returned iterator.
      * <p>
      *     Note: During a rehash, the implementation might return keys twice or not at all.
      * </p>
      *
-     * @return closeable iterator over byte-buffers
+     * @return closeable iterator over memory segments
      */
-    CloseableIterator<ByteBuffer> keyBufferIterator();
+    CloseableIterator<MemorySegment> keyBufferIterator();
 
     // serialization
 

@@ -16,7 +16,10 @@
 package org.caffinitas.ohc.linked;
 
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 
@@ -51,6 +54,9 @@ final class Util
 
     static final int SERIALIZED_ENTRY_SIZE = (int) (ENTRY_OFF_DATA - ENTRY_OFF_HASH);
     static final int SERIALIZED_KEY_LEN_SIZE = (int) (ENTRY_OFF_DATA - ENTRY_OFF_KEY_LENGTH);
+
+    // Big-endian int layout used for serialized file/entry headers
+    static final ValueLayout.OfInt BIG_ENDIAN_INT = ValueLayout.JAVA_INT.withOrder(ByteOrder.BIG_ENDIAN);
 
     // Note: keep ENTRY_OFF_HASH, ENTRY_OFF_VALUE_LENGTH, ENTRY_OFF_KEY_LENGTH in exact that order
     // and together and at the end of the header because
@@ -108,6 +114,11 @@ final class Util
             channel.write(buffer);
     }
 
+    static void writeFully(WritableByteChannel channel, MemorySegment segment) throws IOException
+    {
+        writeFully(channel, segment.asByteBuffer());
+    }
+
     static boolean readFully(ReadableByteChannel channel, ByteBuffer buffer) throws IOException
     {
         while (buffer.remaining() > 0)
@@ -117,6 +128,11 @@ final class Util
                 return false;
         }
         return true;
+    }
+
+    static boolean readFully(ReadableByteChannel channel, MemorySegment segment) throws IOException
+    {
+        return readFully(channel, segment.asByteBuffer());
     }
 
     static int bitNum(long val)

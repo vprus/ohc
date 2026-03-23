@@ -18,6 +18,7 @@ package org.caffinitas.ohc.linked;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.foreign.MemorySegment;
 import java.util.zip.CRC32C;
 
 final class Crc32cHash
@@ -54,11 +55,9 @@ final class Crc32cHash
             return h;
         }
 
-        long hash(long address, long offset, int length) {
-            Uns.validate(address, offset, length);
-
+        long hash(MemorySegment segment) {
             CRC32C crc = new CRC32C();
-            crc.update(Uns.directBufferFor(address, offset, length, true));
+            crc.update(segment.asByteBuffer());
             long h = crc.getValue();
             h |= h << 32;
             return h;

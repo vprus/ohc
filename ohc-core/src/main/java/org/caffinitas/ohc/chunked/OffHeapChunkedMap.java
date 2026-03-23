@@ -15,7 +15,8 @@
  */
 package org.caffinitas.ohc.chunked;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
@@ -26,9 +27,6 @@ import org.caffinitas.ohc.CacheSerializer;
 import org.caffinitas.ohc.OHCacheBuilder;
 import org.caffinitas.ohc.Ticker;
 import org.caffinitas.ohc.histo.EstimatedHistogram;
-import sun.nio.ch.DirectBuffer;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.*;
 
 final class OffHeapChunkedMap
 {
@@ -80,7 +78,7 @@ final class OffHeapChunkedMap
     private int writeChunkOffset;
     private int writeChunkFree;
 
-    private final ByteBuffer memory;
+    private final MemorySegment memory;
 
     OffHeapChunkedMap(OHCacheBuilder builder, long freeCapacity, long chunkSize)
     {
@@ -213,7 +211,7 @@ final class OffHeapChunkedMap
     Object getEntry(KeyBuffer key, CacheSerializer<?> valueSerializer)
     {
         int hashEntryOffset;
-        ByteBuffer serBuffer = null;
+        MemorySegment serBuffer = null;
 
         boolean wasFirst = lock(); 
         try
@@ -241,10 +239,10 @@ final class OffHeapChunkedMap
                 int keyLen = getKeyLen(hashEntryOffset);
                 int valueLen = getValueLen(hashEntryOffset);
                 int hashEntryValueOffset = hashEntryOffset + Util.entryOffData(isFixedSize()) + keyLen;
-                serBuffer = ByteBuffer.allocate(valueLen);
+                byte[] valBytes = new byte[valueLen];
 
-                Uns.copyMemory(((DirectBuffer)memory).address(), hashEntryValueOffset, serBuffer.array(), 0, valueLen);
-                byteBufferLimit(serBuffer, valueLen);
+                Uns.copyMemory(memory.address(), hashEntryValueOffset, valBytes, 0, valueLen);
+                serBuffer = MemorySegment.ofArray(valBytes);
 
                 break;
             }
@@ -264,7 +262,7 @@ final class OffHeapChunkedMap
         return valueSerializer.deserialize(serBuffer);
     }
 
-    boolean putEntry(ByteBuffer newHashEntry, long hash, int keyLen, int entryBytes, boolean ifAbsent, int oldValueLen)
+    boolean putEntry(MemorySegment newHashEntry, long hash, int keyLen, int entryBytes, boolean ifAbsent, int oldValueLen)
     {
         boolean wasFirst = lock(); 
         try
@@ -303,9 +301,9 @@ final class OffHeapChunkedMap
                         if (!isFixedSize())
                             setValueLen(hashEntryOffset, getValueLen(newHashEntry));
 
-                        Uns.copyMemory(newHashEntry.array(), valueOffset,
-                                       ((DirectBuffer)memory).address(), hashEntryValueOffset,
-                                       entryBytes - valueOffset);
+                        MemorySegment.copy(newHashEntry, valueOffset,
+                                           memory, hashEntryValueOffset,
+                                           entryBytes - valueOffset);
 
                         putReplaceCount++;
 
@@ -380,9 +378,9 @@ final class OffHeapChunkedMap
             // just overwrite the old value if it fits
             hashEntryOffset = chunkOffset(writeChunk) + writeChunkOffset;
 
-            Uns.copyMemory(newHashEntry.array(), newHashEntry.position(),
-                           ((DirectBuffer)memory).address(), hashEntryOffset,
-                           entryBytes - newHashEntry.position());
+            MemorySegment.copy(newHashEntry, 0,
+                               memory, hashEntryOffset,
+                               entryBytes);
 
             writeChunkOffset += entryBytes;
             writeChunkFree -= entryBytes;
@@ -472,7 +470,7 @@ final class OffHeapChunkedMap
                || !compareKey(hashEntryOffset, key);
     }
 
-    private boolean notSameKey(ByteBuffer hashEntry, long newHash, int newKeyLen, int hashEntryOffset)
+    private boolean notSameKey(MemorySegment hashEntry, long newHash, int newKeyLen, int hashEntryOffset)
     {
         if (getHash(hashEntry) != newHash) return true;
 
@@ -536,19 +534,19 @@ final class OffHeapChunkedMap
     private Table createTable(int hashTableSize, boolean throwOOME)
     {
         int msz = Table.BUCKET_ENTRY_LEN * hashTableSize;
-        ByteBuffer table = Uns.allocate(msz, throwOOME);
+        MemorySegment table = Uns.allocate(msz, throwOOME);
         return table == null ? null : new Table(table, hashTableSize);
     }
 
     private final class Table
     {
         final int mask;
-        final ByteBuffer table;
+        final MemorySegment table;
         private boolean released;
 
         static final int BUCKET_ENTRY_LEN = 4;
 
-        private Table(ByteBuffer table, int hashTableSize)
+        private Table(MemorySegment table, int hashTableSize)
         {
             this.table = table;
             this.mask = hashTableSize - 1;
@@ -557,13 +555,7 @@ final class OffHeapChunkedMap
 
         void clear()
         {
-            // It's important to initialize the hash table memory.
-            // (uninitialized memory will cause problems - endless loops, JVM crashes, damaged data, etc)
-            byteBufferClear(table);
-            while (table.remaining() > 8)
-                table.putLong(0L);
-            while (table.remaining() > 0)
-                table.put((byte) 0);
+            table.fill((byte) 0);
         }
 
         void release()
@@ -581,12 +573,12 @@ final class OffHeapChunkedMap
 
         int getFirst(long hash)
         {
-            return table.getInt(bucketOffset(hash));
+            return table.get(ValueLayout.JAVA_INT_UNALIGNED, bucketOffset(hash));
         }
 
         void setFirst(long hash, int hashEntryOffset)
         {
-            table.putInt(bucketOffset(hash), hashEntryOffset);
+            table.set(ValueLayout.JAVA_INT_UNALIGNED, bucketOffset(hash), hashEntryOffset);
         }
 
         private int bucketOffset(long hash)
@@ -667,30 +659,29 @@ final class OffHeapChunkedMap
     // snapshot iterator
     //
 
-    private final class ChunkSnapshotIterator extends AbstractIterator<ByteBuffer>
+    private final class ChunkSnapshotIterator extends AbstractIterator<MemorySegment>
     {
         private final int entries;
         private final int limit;
-        private final ByteBuffer snaphotBuffer;
+        private final MemorySegment snaphotBuffer;
         private int n;
         private int pos;
 
-        ChunkSnapshotIterator(int limit, ByteBuffer snaphotBuffer)
+        ChunkSnapshotIterator(int limit, MemorySegment snaphotBuffer)
         {
             this.snaphotBuffer = snaphotBuffer;
             this.limit = limit;
-            this.entries = snaphotBuffer.getInt(Util.CHUNK_OFF_ENTRIES);
+            this.entries = snaphotBuffer.get(ValueLayout.JAVA_INT_UNALIGNED, Util.CHUNK_OFF_ENTRIES);
             this.pos = Util.CHUNK_OFF_DATA;
         }
 
-        protected ByteBuffer computeNext()
+        protected MemorySegment computeNext()
         {
             while (true)
             {
                 if (n == entries || n == limit)
                     return endOfData();
 
-                byteBufferClear(snaphotBuffer);
                 int keyLen;
                 int reservedLen;
                 boolean removed;
@@ -698,13 +689,13 @@ final class OffHeapChunkedMap
                 {
                     keyLen = fixedKeySize;
                     reservedLen = fixedValueSize;
-                    removed = snaphotBuffer.getInt(pos + Util.ENTRY_OFF_REMOVED) == -1;
+                    removed = snaphotBuffer.get(ValueLayout.JAVA_INT_UNALIGNED, pos + Util.ENTRY_OFF_REMOVED) == -1;
                 }
                 else
                 {
-                    keyLen = snaphotBuffer.getInt(pos + Util.ENTRY_OFF_KEY_LENGTH);
-                    removed = snaphotBuffer.getInt(pos + Util.ENTRY_OFF_VALUE_LENGTH) == -1;
-                    reservedLen = snaphotBuffer.getInt(pos + Util.ENTRY_OFF_RESERVED_LENGTH);
+                    keyLen = snaphotBuffer.get(ValueLayout.JAVA_INT_UNALIGNED, pos + Util.ENTRY_OFF_KEY_LENGTH);
+                    removed = snaphotBuffer.get(ValueLayout.JAVA_INT_UNALIGNED, pos + Util.ENTRY_OFF_VALUE_LENGTH) == -1;
+                    reservedLen = snaphotBuffer.get(ValueLayout.JAVA_INT_UNALIGNED, pos + Util.ENTRY_OFF_RESERVED_LENGTH);
                 }
 
                 int keyOff = pos + Util.entryOffData(isFixedSize());
@@ -716,24 +707,21 @@ final class OffHeapChunkedMap
                 // skip removed entries
                 if (!removed)
                 {
-
-                    byteBufferPosition(snaphotBuffer, keyOff);
-                    byteBufferLimit(snaphotBuffer, keyOff + keyLen);
-                    return snaphotBuffer;
+                    return snaphotBuffer.asSlice(keyOff, keyLen).asReadOnly();
                 }
             }
         }
     }
 
-    Iterator<ByteBuffer> snapshotIterator(final int keysPerChunk, final ByteBuffer snaphotBuffer)
+    Iterator<MemorySegment> snapshotIterator(final int keysPerChunk, final MemorySegment snaphotBuffer)
     {
-        return new AbstractIterator<ByteBuffer>()
+        return new AbstractIterator<MemorySegment>()
         {
             private int chunk;
 
-            private Iterator<ByteBuffer> snapshotIterator;
+            private Iterator<MemorySegment> snapshotIterator;
 
-            protected ByteBuffer computeNext()
+            protected MemorySegment computeNext()
             {
                 while (true)
                 {
@@ -746,9 +734,7 @@ final class OffHeapChunkedMap
                     boolean wasFirst = lock(); 
                     try
                     {
-                        Uns.copyMemory(((DirectBuffer)memory).address(), chunkOffset(chunk), snaphotBuffer.array(), 0, chunkFullSize);
-                        byteBufferPosition(snaphotBuffer, 0);
-                        byteBufferLimit(snaphotBuffer, chunkFullSize);
+                        MemorySegment.copy(memory, chunkOffset(chunk), snaphotBuffer, 0, chunkFullSize);
 
                         snapshotIterator = new ChunkSnapshotIterator(keysPerChunk, snaphotBuffer);
                     }
@@ -768,82 +754,82 @@ final class OffHeapChunkedMap
 
     private long getHash(int hashEntryOffset)
     {
-        return memory.getLong(hashEntryOffset + Util.ENTRY_OFF_HASH);
+        return memory.get(ValueLayout.JAVA_LONG_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_HASH);
     }
 
-    private long getHash(ByteBuffer hashEntry)
+    private long getHash(MemorySegment hashEntry)
     {
-        return hashEntry.getLong(Util.ENTRY_OFF_HASH);
+        return hashEntry.get(ValueLayout.JAVA_LONG_UNALIGNED, Util.ENTRY_OFF_HASH);
     }
 
     private int getNext(int hashEntryOffset)
     {
-        return hashEntryOffset != 0 ? memory.getInt(hashEntryOffset + Util.ENTRY_OFF_NEXT) : 0;
+        return hashEntryOffset != 0 ? memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_NEXT) : 0;
     }
 
     private void setNext(int hashEntryOffset, int nextEntryOffset)
     {
-        memory.putInt(hashEntryOffset + Util.ENTRY_OFF_NEXT, nextEntryOffset);
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_NEXT, nextEntryOffset);
     }
 
     private boolean isEntryRemoved(int hashEntryOffset)
     {
-        return memory.getInt(hashEntryOffset + (isFixedSize() ? Util.ENTRY_OFF_REMOVED : Util.ENTRY_OFF_VALUE_LENGTH)) == -1;
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + (isFixedSize() ? Util.ENTRY_OFF_REMOVED : Util.ENTRY_OFF_VALUE_LENGTH)) == -1;
     }
 
     private void setEntryRemoved(int hashEntryOffset)
     {
-        memory.putInt(hashEntryOffset + (isFixedSize() ? Util.ENTRY_OFF_REMOVED : Util.ENTRY_OFF_VALUE_LENGTH), -1);
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + (isFixedSize() ? Util.ENTRY_OFF_REMOVED : Util.ENTRY_OFF_VALUE_LENGTH), -1);
     }
 
     private int getKeyLen(int hashEntryOffset)
     {
         if (fixedKeySize > 0)
             return fixedKeySize;
-        return memory.getInt(hashEntryOffset + Util.ENTRY_OFF_KEY_LENGTH);
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_KEY_LENGTH);
     }
 
     private int getValueLen(int hashEntryOffset)
     {
         if (fixedKeySize > 0)
             return fixedValueSize;
-        return memory.getInt(hashEntryOffset + Util.ENTRY_OFF_VALUE_LENGTH);
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_VALUE_LENGTH);
     }
 
     private void setValueLen(int hashEntryOffset, int valueLen)
     {
         if (fixedKeySize == 0)
-            memory.putInt(hashEntryOffset + Util.ENTRY_OFF_VALUE_LENGTH, valueLen);
+            memory.set(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_VALUE_LENGTH, valueLen);
     }
 
-    private int getValueLen(ByteBuffer hashEntry)
+    private int getValueLen(MemorySegment hashEntry)
     {
         if (fixedValueSize > 0)
             return fixedValueSize;
-        return hashEntry.getInt(Util.ENTRY_OFF_VALUE_LENGTH);
+        return hashEntry.get(ValueLayout.JAVA_INT_UNALIGNED, Util.ENTRY_OFF_VALUE_LENGTH);
     }
 
     private int getValueReservedLen(int hashEntryOffset)
     {
         if (fixedValueSize > 0)
             return fixedValueSize;
-        return memory.getInt(hashEntryOffset + Util.ENTRY_OFF_RESERVED_LENGTH);
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + Util.ENTRY_OFF_RESERVED_LENGTH);
     }
 
-    private boolean compare(int memoryOffset, ByteBuffer otherHashEntry, int otherOffset, int len)
+    private boolean compare(int memoryOffset, MemorySegment otherHashEntry, int otherOffset, int len)
     {
         int p = 0;
         for (; p <= len - 8; p += 8, memoryOffset += 8, otherOffset += 8)
-            if (memory.getLong(memoryOffset) != otherHashEntry.getLong(otherOffset))
+            if (memory.get(ValueLayout.JAVA_LONG_UNALIGNED, memoryOffset) != otherHashEntry.get(ValueLayout.JAVA_LONG_UNALIGNED, otherOffset))
                 return false;
         for (; p <= len - 4; p += 4, memoryOffset += 4, otherOffset += 4)
-            if (memory.getInt(memoryOffset) != otherHashEntry.getInt(otherOffset))
+            if (memory.get(ValueLayout.JAVA_INT_UNALIGNED, memoryOffset) != otherHashEntry.get(ValueLayout.JAVA_INT_UNALIGNED, otherOffset))
                 return false;
         for (; p <= len - 2; p += 2, memoryOffset += 2, otherOffset += 2)
-            if (memory.getShort(memoryOffset) != otherHashEntry.getShort(otherOffset))
+            if (memory.get(ValueLayout.JAVA_SHORT_UNALIGNED, memoryOffset) != otherHashEntry.get(ValueLayout.JAVA_SHORT_UNALIGNED, otherOffset))
                 return false;
         for (; p < len; p++, memoryOffset++, otherOffset++)
-            if (memory.get(memoryOffset) != otherHashEntry.get(otherOffset))
+            if (memory.get(ValueLayout.JAVA_BYTE, memoryOffset) != otherHashEntry.get(ValueLayout.JAVA_BYTE, otherOffset))
                 return false;
 
         return true;
@@ -852,20 +838,20 @@ final class OffHeapChunkedMap
     private boolean compareKey(int hashEntryOffset, KeyBuffer key)
     {
         int blkOff = Util.entryOffData(isFixedSize());
-        ByteBuffer buf = key.buffer();
-        int p = buf.position();
-        int endIdx = buf.limit();
+        MemorySegment buf = key.segment();
+        long p = 0;
+        long endIdx = buf.byteSize();
         for (; p <= endIdx - 8; p += 8, blkOff += 8)
-            if (memory.getLong(hashEntryOffset + blkOff) != buf.getLong(p))
+            if (memory.get(ValueLayout.JAVA_LONG_UNALIGNED, hashEntryOffset + blkOff) != buf.get(ValueLayout.JAVA_LONG_UNALIGNED, p))
                 return false;
         for (; p <= endIdx - 4; p += 4, blkOff += 4)
-            if (memory.getInt(hashEntryOffset + blkOff) != buf.getInt(p))
+            if (memory.get(ValueLayout.JAVA_INT_UNALIGNED, hashEntryOffset + blkOff) != buf.get(ValueLayout.JAVA_INT_UNALIGNED, p))
                 return false;
         for (; p <= endIdx - 2; p += 2, blkOff += 2)
-            if (memory.getShort(hashEntryOffset + blkOff) != buf.getShort(p))
+            if (memory.get(ValueLayout.JAVA_SHORT_UNALIGNED, hashEntryOffset + blkOff) != buf.get(ValueLayout.JAVA_SHORT_UNALIGNED, p))
                 return false;
         for (; p < endIdx; p++, blkOff++)
-            if (memory.get(hashEntryOffset + blkOff) != buf.get(p))
+            if (memory.get(ValueLayout.JAVA_BYTE, hashEntryOffset + blkOff) != buf.get(ValueLayout.JAVA_BYTE, p))
                 return false;
 
         return true;
@@ -879,9 +865,9 @@ final class OffHeapChunkedMap
     private void resetChunk(int chunkNum)
     {
         int offset = chunkOffset(chunkNum);
-        memory.putLong(offset + Util.CHUNK_OFF_TIMESTAMP, ticker.nanos());
-        memory.putInt(offset + Util.CHUNK_OFF_ENTRIES, 0);
-        memory.putInt(offset + Util.CHUNK_OFF_BYTES, 0);
+        memory.set(ValueLayout.JAVA_LONG_UNALIGNED, offset + Util.CHUNK_OFF_TIMESTAMP, ticker.nanos());
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_ENTRIES, 0);
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_BYTES, 0);
     }
 
     private void touch(int hashEntryOffset)
@@ -897,32 +883,32 @@ final class OffHeapChunkedMap
     private void touchChunk(int chunkNum)
     {
         int offset = chunkOffset(chunkNum);
-        memory.putLong(offset + Util.CHUNK_OFF_TIMESTAMP, ticker.nanos());
+        memory.set(ValueLayout.JAVA_LONG_UNALIGNED, offset + Util.CHUNK_OFF_TIMESTAMP, ticker.nanos());
     }
 
     private long lastUsed(int chunkNum)
     {
         int offset = chunkOffset(chunkNum);
-        return memory.getLong(offset + Util.CHUNK_OFF_TIMESTAMP);
+        return memory.get(ValueLayout.JAVA_LONG_UNALIGNED, offset + Util.CHUNK_OFF_TIMESTAMP);
     }
 
     private void entryAdded(int chunkNum, int bytes)
     {
         int offset = chunkOffset(chunkNum);
-        memory.putInt(offset + Util.CHUNK_OFF_ENTRIES, memory.getInt(offset + Util.CHUNK_OFF_ENTRIES) + 1);
-        memory.putInt(offset + Util.CHUNK_OFF_BYTES, memory.getInt(offset + Util.CHUNK_OFF_BYTES) + bytes);
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_ENTRIES, memory.get(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_ENTRIES) + 1);
+        memory.set(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_BYTES, memory.get(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_BYTES) + bytes);
     }
 
     private int entriesInChunk(int chunkNum)
     {
         int offset = chunkOffset(chunkNum);
-        return memory.getInt(offset + Util.CHUNK_OFF_ENTRIES);
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_ENTRIES);
     }
 
     private int bytesInChunk(int chunkNum)
     {
         int offset = chunkOffset(chunkNum);
-        return memory.getInt(offset + Util.CHUNK_OFF_BYTES);
+        return memory.get(ValueLayout.JAVA_INT_UNALIGNED, offset + Util.CHUNK_OFF_BYTES);
     }
 
     private int nextHashEntryOffset(int off)

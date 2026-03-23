@@ -1,28 +1,12 @@
-/*
- *      Copyright (C) 2014 Robert Stupp, Koeln, Germany, robert-stupp.de
- *
- *   Licensed under the Apache License, Version 2.0 (the "License");
- *   you may not use this file except in compliance with the License.
- *   You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- *   Unless required by applicable law or agreed to in writing, software
- *   distributed under the License is distributed on an "AS IS" BASIS,
- *   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *   See the License for the specific language governing permissions and
- *   limitations under the License.
- */
 package org.caffinitas.ohc.chunked;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 import java.util.Random;
 
 import org.caffinitas.ohc.HashAlgorithm;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import static org.caffinitas.ohc.util.ByteBufferCompat.byteBufferPosition;
 
 public class HasherTest
 {
@@ -58,16 +42,15 @@ public class HasherTest
         rand.nextBytes(buf);
 
         Hasher hasher = Hasher.create(hash);
-        long arrayVal = hasher.hash(ByteBuffer.wrap(buf));
-        ByteBuffer nativeMem = Uns.allocate(buf.length + 99, true);
+        long arrayVal = hasher.hash(MemorySegment.ofArray(buf));
+        MemorySegment nativeMem = Uns.allocate(buf.length + 99, true);
         try
         {
-            for (int i = 0; i < 99; i++)
-                nativeMem.put((byte) 0);
-            nativeMem.put(buf);
+            // write 99 zero bytes, then buf
+            for (int i = 0; i < buf.length; i++)
+                nativeMem.set(ValueLayout.JAVA_BYTE, 99 + i, buf[i]);
 
-            byteBufferPosition(nativeMem, 99);
-            long memoryVal = hasher.hash(nativeMem);
+            long memoryVal = hasher.hash(nativeMem.asSlice(99, buf.length));
 
             Assert.assertEquals(memoryVal, arrayVal);
         }

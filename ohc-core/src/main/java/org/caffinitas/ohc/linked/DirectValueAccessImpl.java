@@ -15,42 +15,53 @@
  */
 package org.caffinitas.ohc.linked;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.Arena;
+import java.lang.foreign.MemorySegment;
 
 import org.caffinitas.ohc.DirectValueAccess;
 
+/**
+ * Default implementation of {@link DirectValueAccess} for the linked cache.
+ *
+ * <p><strong>Lifecycle:</strong> The {@link MemorySegment} returned by {@link #segment()} is
+ * backed by a confined {@link Arena}.  Closing this {@link DirectValueAccess} (via
+ * {@link #close()}) closes the arena, making the segment inaccessible.  Any attempt to read from
+ * the segment after {@code close()} has been called will throw {@link IllegalStateException}.
+ * The underlying hash-entry reference count is decremented on close, so callers must not use
+ * the segment after closing.</p>
+ */
 class DirectValueAccessImpl implements DirectValueAccess
 {
     private final long hashEntryAdr;
     private boolean closed;
-    private final ByteBuffer buffer;
+    private final Arena arena;
+    private final MemorySegment segment;
 
     DirectValueAccessImpl(long hashEntryAdr, boolean readOnly)
     {
         long keyLen = HashEntries.getKeyLen(hashEntryAdr);
         long valueLen = HashEntries.getValueLen(hashEntryAdr);
         this.hashEntryAdr = hashEntryAdr;
-        this.buffer = Uns.directBufferFor(hashEntryAdr, Util.ENTRY_OFF_DATA + Util.roundUpTo8(keyLen), valueLen, readOnly);
+        // Use a confined arena so that closing this DirectValueAccess immediately
+        // invalidates the segment, preventing use-after-free bugs.
+        this.arena = Arena.ofConfined();
+        MemorySegment seg = Uns.memorySegmentFor(hashEntryAdr, Util.ENTRY_OFF_DATA + Util.roundUpTo8(keyLen), valueLen, arena);
+        this.segment = readOnly ? seg.asReadOnly() : seg;
     }
 
-    public ByteBuffer buffer()
+    public MemorySegment segment()
     {
         if (closed)
             throw new IllegalStateException("already closed");
-        return buffer;
+        return segment;
     }
 
     public void close()
     {
-        deref();
-    }
-
-    private void deref()
-    {
         if (!closed)
         {
-            Uns.invalidateDirectBuffer(buffer);
             closed = true;
+            arena.close();
             HashEntries.dereference(hashEntryAdr);
         }
     }

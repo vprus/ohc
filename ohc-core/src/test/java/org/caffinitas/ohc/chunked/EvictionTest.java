@@ -16,7 +16,8 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 import org.caffinitas.ohc.CacheSerializer;
 import org.caffinitas.ohc.OHCache;
@@ -124,24 +125,28 @@ public class EvictionTest
 
     private byte[] longToBytes(long x)
     {
-        ByteBuffer buffer = ByteBuffer.allocate(8);
-        buffer.putLong(x);
-        return buffer.array();
+        byte[] buffer = new byte[8];
+        for (int i = 7; i >= 0; i--)
+        {
+            buffer[i] = (byte)(x & 0xFF);
+            x >>= 8;
+        }
+        return buffer;
     }
 
     static private class ByteArrayCacheSerializer implements CacheSerializer<byte[]>
     {
         @Override
-        public void serialize(byte[] value, ByteBuffer buf)
+        public void serialize(byte[] value, MemorySegment buf)
         {
-            buf.put(value);
+            MemorySegment.copy(value, 0, buf, ValueLayout.JAVA_BYTE, 0, value.length);
         }
 
         @Override
-        public byte[] deserialize(ByteBuffer buf)
+        public byte[] deserialize(MemorySegment buf)
         {
-            byte[] bytes = new byte[buf.capacity()];
-            buf.get(bytes);
+            byte[] bytes = new byte[(int) buf.byteSize()];
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, 0, bytes, 0, bytes.length);
             return bytes;
         }
 

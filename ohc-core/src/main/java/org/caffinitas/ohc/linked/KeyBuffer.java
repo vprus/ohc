@@ -15,6 +15,7 @@
  */
 package org.caffinitas.ohc.linked;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -79,6 +80,11 @@ final class KeyBuffer
     ByteBuffer byteBuffer()
     {
         return ByteBuffer.wrap(buffer);
+    }
+
+    MemorySegment segment()
+    {
+        return MemorySegment.ofArray(buffer);
     }
 
     boolean sameKey(long hashEntryAdr)

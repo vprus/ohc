@@ -15,10 +15,8 @@
  */
 package org.caffinitas.ohc.chunked;
 
+import java.lang.foreign.MemorySegment;
 import java.lang.reflect.Field;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -31,7 +29,6 @@ import org.caffinitas.ohc.alloc.IAllocator;
 import org.caffinitas.ohc.alloc.JNANativeAllocator;
 import org.caffinitas.ohc.alloc.UnsafeAllocator;
 import sun.misc.Unsafe;
-import sun.nio.ch.DirectBuffer;
 
 final class Uns
 {
@@ -167,7 +164,20 @@ final class Uns
         return allocator.getTotalAllocated();
     }
 
-    static ByteBuffer allocate(long bytes, boolean throwOOME)
+    /**
+     * Allocates off-heap memory and returns a {@link MemorySegment} backed by that allocation.
+     *
+     * <p><strong>Lifecycle note:</strong> The returned segment does not own the native memory.
+     * The caller must call {@link #free(MemorySegment)} when the allocation is no longer needed.
+     * The segment must not be used after {@code free} has been called.</p>
+     *
+     * @param bytes      number of bytes to allocate
+     * @param throwOOME  if {@code true}, throws {@link OutOfMemoryError} on allocation failure
+     * @return a {@link MemorySegment} backed by the newly allocated native memory, or {@code null}
+     *         if allocation fails and {@code throwOOME} is {@code false}
+     */
+    @SuppressWarnings("restricted")
+    static MemorySegment allocate(long bytes, boolean throwOOME)
     {
         long address = allocator.allocate(bytes);
         if (address != 0L)
@@ -178,62 +188,25 @@ final class Uns
                 throw new OutOfMemoryError("unable to allocate " + bytes + " in off-heap");
             return null;
         }
-        return directBufferFor(address, bytes);
+        return MemorySegment.ofAddress(address).reinterpret(bytes);
     }
 
-    static void free(ByteBuffer buffer)
+    /**
+     * Frees the native memory backing the given {@link MemorySegment}.
+     *
+     * <p>The segment must have been created by {@link #allocate(long, boolean)}.
+     * After this call the segment is invalid and must not be accessed.</p>
+     *
+     * @param segment the segment whose backing allocation should be freed;
+     *                {@code null} is silently ignored
+     */
+    static void free(MemorySegment segment)
     {
-        if (buffer == null || !DIRECT_BYTE_BUFFER_CLASS.isAssignableFrom(buffer.getClass()))
+        if (segment == null)
             return;
 
-        long address = ((DirectBuffer) buffer).address();
-
+        long address = segment.address();
         freed(address);
         allocator.free(address);
-    }
-
-    private static final Class<?> DIRECT_BYTE_BUFFER_CLASS;
-    private static final long DIRECT_BYTE_BUFFER_ADDRESS_OFFSET;
-    private static final long DIRECT_BYTE_BUFFER_CAPACITY_OFFSET;
-    private static final long DIRECT_BYTE_BUFFER_LIMIT_OFFSET;
-
-    static
-    {
-        try
-        {
-            ByteBuffer directBuffer = ByteBuffer.allocateDirect(0);
-            Class<?> clazz = directBuffer.getClass();
-            DIRECT_BYTE_BUFFER_ADDRESS_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("address"));
-            DIRECT_BYTE_BUFFER_CAPACITY_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("capacity"));
-            DIRECT_BYTE_BUFFER_LIMIT_OFFSET = unsafe.objectFieldOffset(Buffer.class.getDeclaredField("limit"));
-            DIRECT_BYTE_BUFFER_CLASS = clazz;
-        }
-        catch (NoSuchFieldException e)
-        {
-            throw new RuntimeException(e);
-        }
-    }
-
-    static ByteBuffer directBufferFor(long address, long len)
-    {
-        if (len > Integer.MAX_VALUE || len < 0L)
-            throw new IllegalArgumentException();
-        try
-        {
-            ByteBuffer bb = (ByteBuffer) unsafe.allocateInstance(DIRECT_BYTE_BUFFER_CLASS);
-            unsafe.putLong(bb, DIRECT_BYTE_BUFFER_ADDRESS_OFFSET, address);
-            unsafe.putInt(bb, DIRECT_BYTE_BUFFER_CAPACITY_OFFSET, (int) len);
-            unsafe.putInt(bb, DIRECT_BYTE_BUFFER_LIMIT_OFFSET, (int) len);
-            bb.order(ByteOrder.BIG_ENDIAN);
-            return bb;
-        }
-        catch (Error e)
-        {
-            throw e;
-        }
-        catch (Throwable t)
-        {
-            throw new RuntimeException(t);
-        }
     }
 }

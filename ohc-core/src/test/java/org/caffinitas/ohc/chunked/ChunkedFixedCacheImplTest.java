@@ -16,7 +16,7 @@
 package org.caffinitas.ohc.chunked;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -464,7 +464,7 @@ public class ChunkedFixedCacheImplTest
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
@@ -491,7 +491,7 @@ public class ChunkedFixedCacheImplTest
 
             Assert.assertEquals(cache.stats().getSize(), 100);
 
-            try (CloseableIterator<ByteBuffer> iProd = cache.hotKeyBufferIterator(10))
+            try (CloseableIterator<MemorySegment> iProd = cache.hotKeyBufferIterator(10))
             {
                 int count = 0;
                 while (iProd.hasNext())
@@ -518,14 +518,12 @@ public class ChunkedFixedCacheImplTest
             Assert.assertEquals(cache.stats().getSize(), 100);
 
             Set<Integer> keys = new HashSet<>();
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
-                    ByteBuffer k = iter.next();
-                    ByteBuffer k2 = ByteBuffer.allocate(k.remaining());
-                    k2.put(k);
-                    Integer key = TestUtils.fixedKeySerializer.deserialize(ByteBuffer.wrap(k2.array()));
+                    MemorySegment k = iter.next();
+                    Integer key = TestUtils.fixedKeySerializer.deserialize(k);
                     assertTrue(keys.add(key));
                 }
             }
@@ -545,7 +543,7 @@ public class ChunkedFixedCacheImplTest
             for (int i = 0; i < 100; i++)
                 cache.put(i, Integer.toOctalString(i));
 
-            try (CloseableIterator<ByteBuffer> iter = cache.keyBufferIterator())
+            try (CloseableIterator<MemorySegment> iter = cache.keyBufferIterator())
             {
                 while (iter.hasNext())
                 {
@@ -658,11 +656,11 @@ public class ChunkedFixedCacheImplTest
         return OHCacheBuilder.<Integer, String>newBuilder()
                              .keySerializer(new CacheSerializer<Integer>()
                              {
-                                 public void serialize(Integer integer, ByteBuffer buf)
+                                 public void serialize(Integer integer, MemorySegment buf)
                                  {
                                  }
 
-                                 public Integer deserialize(ByteBuffer buf)
+                                 public Integer deserialize(MemorySegment buf)
                                  {
                                      return null;
                                  }
@@ -674,11 +672,11 @@ public class ChunkedFixedCacheImplTest
                              })
                              .valueSerializer(new CacheSerializer<String>()
                              {
-                                 public void serialize(String s, ByteBuffer buf)
+                                 public void serialize(String s, MemorySegment buf)
                                  {
                                  }
 
-                                 public String deserialize(ByteBuffer buf)
+                                 public String deserialize(MemorySegment buf)
                                  {
                                      return null;
                                  }

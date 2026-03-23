@@ -17,7 +17,7 @@ package org.caffinitas.ohc.linked;
 
 import org.caffinitas.ohc.HashAlgorithm;
 
-import java.lang.reflect.InvocationTargetException;
+import java.lang.foreign.MemorySegment;
 
 abstract class Hasher
 {
@@ -47,22 +47,8 @@ abstract class Hasher
         }
     }
 
-    private static Hasher newHasher(HashAlgorithm hashAlgorithm)
-            throws InstantiationException, IllegalAccessException, InvocationTargetException, NoSuchMethodException, ClassNotFoundException {
-        String cls = forAlg(hashAlgorithm);
-        return (Hasher) Class.forName(cls).getDeclaredConstructor().newInstance();
-    }
-
-    private static String forAlg(HashAlgorithm hashAlgorithm)
-    {
-        return Hasher.class.getName().substring(0, Hasher.class.getName().lastIndexOf('.') + 1)
-               + hashAlgorithm.name().charAt(0)
-               + hashAlgorithm.name().substring(1).toLowerCase()
-               + "Hash";
-    }
-
     abstract long hash(byte[] array);
 
-    abstract long hash(long address, long offset, int length);
+    abstract long hash(MemorySegment segment);
 
 }

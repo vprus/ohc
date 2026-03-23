@@ -17,6 +17,7 @@ package org.caffinitas.ohc.linked;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.nio.channels.ReadableByteChannel;
 
@@ -24,8 +25,8 @@ import org.xerial.snappy.Snappy;
 
 import static org.caffinitas.ohc.linked.Util.HEADER_COMPRESSED;
 import static org.caffinitas.ohc.linked.Util.HEADER_COMPRESSED_WRONG;
+import static org.caffinitas.ohc.linked.Util.BIG_ENDIAN_INT;
 import static org.caffinitas.ohc.linked.Util.readFully;
-import static org.caffinitas.ohc.util.ByteBufferCompat.*;
 
 final class DecompressingInputChannel implements ReadableByteChannel
 {
@@ -47,19 +48,18 @@ final class DecompressingInputChannel implements ReadableByteChannel
         int maxCLen;
         try
         {
-            ByteBuffer header = Uns.directBufferFor(headerAdr, 0, 16, false);
+            MemorySegment header = Uns.memorySegmentFor(headerAdr, 0, 16);
             if (!readFully(delegate, header))
                 throw new EOFException("Could not read file header");
-            byteBufferFlip(header);
-            int magic = header.getInt();
+            int magic = header.get(BIG_ENDIAN_INT, 0);
             if (magic == HEADER_COMPRESSED_WRONG)
                 throw new IOException("File from instance with different CPU architecture cannot be loaded");
             if (magic != HEADER_COMPRESSED)
                 throw new IOException("Illegal file header");
-            if (header.getInt() != 1)
+            if (header.get(BIG_ENDIAN_INT, 4) != 1)
                 throw new IOException("Illegal file version");
-            bufferSize = header.getInt();
-            maxCLen = header.getInt();
+            bufferSize = header.get(BIG_ENDIAN_INT, 8);
+            maxCLen = header.get(BIG_ENDIAN_INT, 12);
         }
         finally
         {
@@ -68,11 +68,11 @@ final class DecompressingInputChannel implements ReadableByteChannel
 
         this.delegate = delegate;
         this.compressedAddress = Uns.allocateIOException(maxCLen + bufferSize);
-        this.compressedBuffer = Uns.directBufferFor(compressedAddress, 0L, maxCLen, false);
-        byteBufferPosition(this.compressedBuffer, compressedBuffer.limit());
+        this.compressedBuffer = Uns.memorySegmentFor(compressedAddress, 0L, maxCLen).asByteBuffer();
+        this.compressedBuffer.position(compressedBuffer.limit());
 
-        this.decompressedBuffer = Uns.directBufferFor(compressedAddress, maxCLen, bufferSize, false);
-        byteBufferPosition(this.decompressedBuffer, decompressedBuffer.limit());
+        this.decompressedBuffer = Uns.memorySegmentFor(compressedAddress, maxCLen, bufferSize).asByteBuffer();
+        this.decompressedBuffer.position(decompressedBuffer.limit());
     }
 
     public void close()
@@ -109,7 +109,7 @@ final class DecompressingInputChannel implements ReadableByteChannel
                 throw new EOFException("unexpected EOF");
 
             // decompress
-            byteBufferClear(decompressedBuffer);
+            decompressedBuffer.clear();
             if (!Snappy.isValidCompressedBuffer(compressedBuffer))
                 throw new IOException("Invalid compressed data");
             r = Snappy.uncompress(compressedBuffer, decompressedBuffer);
@@ -119,9 +119,9 @@ final class DecompressingInputChannel implements ReadableByteChannel
         if (dstRem < r)
         {
             ByteBuffer dDup = decompressedBuffer.duplicate();
-            byteBufferLimit(dDup, dDup.position() + dstRem);
+            dDup.limit(dDup.position() + dstRem);
             dst.put(dDup);
-            byteBufferPosition(decompressedBuffer, decompressedBuffer.position() + dstRem);
+            decompressedBuffer.position(decompressedBuffer.position() + dstRem);
             return dstRem;
         }
         else
@@ -133,11 +133,11 @@ final class DecompressingInputChannel implements ReadableByteChannel
     private int readBytes(int len) throws IOException
     {
         // read compressed buffer
-        byteBufferClear(compressedBuffer);
-        byteBufferLimit(compressedBuffer, len);
+        compressedBuffer.clear();
+        compressedBuffer.limit(len);
         if (!readFully(delegate, compressedBuffer))
             return 0;
-        byteBufferPosition(compressedBuffer, 0);
+        compressedBuffer.position(0);
         return len;
     }
 

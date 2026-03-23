@@ -18,6 +18,7 @@ package org.caffinitas.ohc.chunked;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 import java.util.zip.CRC32C;
 
@@ -47,9 +48,9 @@ final class Crc32cHash
     }
 
     static final class Crc32cHashImpl extends Hasher {
-        long hash(ByteBuffer buffer) {
+        long hash(MemorySegment segment) {
             CRC32C crc = new CRC32C();
-            crc.update(buffer);
+            crc.update(segment.asByteBuffer());
             return crc.getValue();
         }
     }

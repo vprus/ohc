@@ -15,42 +15,39 @@
  */
 package org.caffinitas.ohc;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 
 /**
- * Serialize and deserialize cached data using {@link java.nio.ByteBuffer}
+ * Serialize and deserialize cached data using {@link java.lang.foreign.MemorySegment}.
+ *
+ * <p><strong>Lifecycle note:</strong> The {@link MemorySegment} passed to {@link #serialize} and
+ * {@link #deserialize} is valid only for the duration of the method call. Callers must not retain
+ * a reference to the segment beyond the method invocation.</p>
  */
 public interface CacheSerializer<T>
 {
     /**
-     * Serialize the specified type into the specified {@code ByteBuffer} instance.
+     * Serialize the specified value into the provided {@link MemorySegment}.
+     * The segment's byte size equals the value returned by {@link #serializedSize(Object)}.
      *
      * @param value non-{@code null} object that needs to be serialized
-     * @param buf   {@code ByteBuffer} into which serialization needs to happen.
+     * @param buf   {@link MemorySegment} into which serialization needs to happen.
      */
-    void serialize(T value, ByteBuffer buf);
+    void serialize(T value, MemorySegment buf);
 
     /**
-     * Deserialize from the specified {@code DataInput} instance.
-     * <p>
-     * Implementations of this method should never return {@code null}. Although there <em>might</em> be
-     * no explicit runtime checks, a violation would break the contract of several API methods in
-     * {@link OHCache}. For example users of {@link OHCache#get(Object)} might not be able to distinguish
-     * between a non-existing entry or the "value" {@code null}. Instead, consider returning a singleton
-     * replacement object.
-     * </p>
+     * Deserialize from the provided {@link MemorySegment}.
      *
-     * @param buf {@code ByteBuffer} from which deserialization needs to happen.
+     * @param buf {@link MemorySegment} from which deserialization needs to happen.
      * @return the type that was deserialized. Must not return {@code null}.
      */
-    T deserialize(ByteBuffer buf);
+    T deserialize(MemorySegment buf);
 
     /**
-     * Calculate the number of bytes that will be produced by {@link #serialize(Object, java.nio.ByteBuffer)}
-     * for given object {@code t}.
+     * Calculate the number of bytes that will be produced by {@link #serialize(Object, MemorySegment)}.
      *
      * @param value non-{@code null} object to calculate serialized size for
-     * @return serialized size of {@code t}
+     * @return serialized size of {@code value}
      */
     int serializedSize(T value);
 }

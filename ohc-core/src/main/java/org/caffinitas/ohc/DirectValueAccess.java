@@ -16,17 +16,26 @@
 package org.caffinitas.ohc;
 
 import java.io.Closeable;
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
 
 /**
- * Returned by {@link org.caffinitas.ohc.OHCache} for direct/random access to cached values and must be closed after use.
- * <p>
- * You must close the returned {@link DirectValueAccess} instance after use.
- * After closing, you must not call any of the methods of the {@link java.nio.ByteBuffer}
- * returned by {@link #buffer()}.
- * </p>
+ * Returned by {@link org.caffinitas.ohc.OHCache} for direct/random access to cached values.
+ *
+ * <p>You must close the returned {@link DirectValueAccess} instance after use.
+ * After closing, you must not access the {@link MemorySegment} returned by {@link #segment()};
+ * any such access will throw {@link IllegalStateException}.</p>
  */
 public interface DirectValueAccess extends Closeable
 {
-    ByteBuffer buffer();
+    /**
+     * Returns a read-only {@link MemorySegment} that directly references the cached value's
+     * off-heap memory.
+     *
+     * <p><strong>Lifecycle:</strong> The segment is valid only while this {@link DirectValueAccess}
+     * is open. Call {@link #close()} when done; the segment becomes inaccessible immediately
+     * after close.</p>
+     *
+     * @return a read-only {@link MemorySegment} backed by the off-heap value data
+     */
+    MemorySegment segment();
 }

@@ -15,20 +15,22 @@
  */
 package org.caffinitas.ohc.benchmark;
 
-import java.nio.ByteBuffer;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.ValueLayout;
 
 import org.caffinitas.ohc.CacheSerializer;
 
 public final class BenchmarkUtils {
     public static final CacheSerializer<byte[]> serializer = new CacheSerializer<byte[]>() {
-        public void serialize(byte[] bytes, ByteBuffer buf) {
-            buf.putInt(bytes.length);
-            buf.put(bytes);
+        public void serialize(byte[] bytes, MemorySegment buf) {
+            buf.set(ValueLayout.JAVA_INT_UNALIGNED, 0, bytes.length);
+            MemorySegment.copy(bytes, 0, buf, ValueLayout.JAVA_BYTE, 4, bytes.length);
         }
 
-        public byte[] deserialize(ByteBuffer buf) {
-            byte[] bytes = new byte[buf.getInt()];
-            buf.get(bytes);
+        public byte[] deserialize(MemorySegment buf) {
+            int len = buf.get(ValueLayout.JAVA_INT_UNALIGNED, 0);
+            byte[] bytes = new byte[len];
+            MemorySegment.copy(buf, ValueLayout.JAVA_BYTE, 4, bytes, 0, len);
             return bytes;
         }
 
@@ -39,14 +41,14 @@ public final class BenchmarkUtils {
 
     public static final CacheSerializer<Long> longSerializer = new CacheSerializer<Long>()
     {
-        public void serialize(Long val, ByteBuffer buf)
+        public void serialize(Long val, MemorySegment buf)
         {
-            buf.putLong(val);
+            buf.set(ValueLayout.JAVA_LONG_UNALIGNED, 0, val);
         }
 
-        public Long deserialize(ByteBuffer buf)
+        public Long deserialize(MemorySegment buf)
         {
-            return buf.getLong();
+            return buf.get(ValueLayout.JAVA_LONG_UNALIGNED, 0);
         }
 
         public int serializedSize(Long value)
@@ -64,19 +66,16 @@ public final class BenchmarkUtils {
             this.keyLen = keyLen;
         }
 
-        public void serialize(Long val, ByteBuffer buf)
+        public void serialize(Long val, MemorySegment buf)
         {
-            buf.putLong(val);
+            buf.set(ValueLayout.JAVA_LONG_UNALIGNED, 0, val);
             for (int i = 0; i < keyLen; i++)
-                buf.put((byte)(0 & 0xff));
+                buf.set(ValueLayout.JAVA_BYTE, 8 + i, (byte) 0);
         }
 
-        public Long deserialize(ByteBuffer buf)
+        public Long deserialize(MemorySegment buf)
         {
-            long v = buf.getLong();
-            for (int i = 0; i < keyLen; i++)
-                buf.get();
-            return v;
+            return buf.get(ValueLayout.JAVA_LONG_UNALIGNED, 0);
         }
 
         public int serializedSize(Long value)

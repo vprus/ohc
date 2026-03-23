@@ -17,14 +17,16 @@ package org.caffinitas.ohc.chunked;
 
 import net.jpountz.xxhash.XXHashFactory;
 
+import java.lang.foreign.MemorySegment;
 import java.nio.ByteBuffer;
 
 final class XxHash extends Hasher
 {
     private static final XXHashFactory xx = XXHashFactory.fastestInstance();
 
-    long hash(ByteBuffer buffer)
+    long hash(MemorySegment segment)
     {
-        return xx.hash64().hash(buffer, 0);
+        ByteBuffer buf = segment.asByteBuffer();
+        return xx.hash64().hash(buf, 0);
     }
 }
