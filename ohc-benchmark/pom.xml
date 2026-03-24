@@ -3,14 +3,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>org.caffinitas.ohc</groupId>
+        <groupId>com.vladimirprus.ohc</groupId>
         <artifactId>ohc-parent</artifactId>
-        <version>0.7.5-SNAPSHOT</version>
+        <version>1.0.0-SNAPSHOT</version>
         <relativePath>..</relativePath>
     </parent>
 
     <artifactId>ohc-benchmark</artifactId>
-    <version>0.7.5-SNAPSHOT</version>
+    <version>1.0.0-SNAPSHOT</version>
 
     <name>OHC benchmark executable</name>
     <description>Off-Heap concurrent hash map intended to store GBs of serialized data</description>
@@ -70,9 +70,9 @@
     <dependencies>
 
         <dependency>
-            <groupId>org.caffinitas.ohc</groupId>
+            <groupId>com.vladimirprus.ohc</groupId>
             <artifactId>ohc-core</artifactId>
-            <version>0.7.5-SNAPSHOT</version>
+            <version>1.0.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>commons-cli</groupId>
