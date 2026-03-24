@@ -1,12 +1,30 @@
 OHC - An off-heap-cache
 =======================
 
+THIS IS HIGHLY EXPERIMENTAL FORK.
 
-THIS PROJECT IS NO LONGER MAINTAINED!!!
+THE ORIGINAL PROJECT IS NO LONGER MAINTAINED.
 
+Java 25 port
+============
 
+This fork contains a Java 25 port of the original OHC codebase, and specifically,
+it rewrites everything to use MemorySegment instead of ByteBuffer. This, in itself,
+is not expected to matter much. Here are the benchmark results:
 
+- getMultiThreaded, MURMUR3: original 15.943 ± 4.919, current 16.853 ± 3.770, delta +5.7%
+- getMultiThreaded, XX: original 16.637 ± 1.407, current 16.414 ± 1.013, delta -1.3%
+- putMultiThreaded, MURMUR3: original 3.669 ± 0.911, current 3.853 ± 1.380, delta +5.0%
+- putMultiThreaded, XX: original 4.092 ± 0.203, current 4.152 ± 0.155, delta +1.5%
 
+The benchmarks were run with ``-wi 2 -i 6 -w 10s -r 15s -f 1``.
+
+So, there is no meaningful change. However, direct value access code may eventually run
+faster on MemorySegment, especially because MemorySegment plays nicer with the Vector API.
+This is unproven so far.
+
+The initial port is almost completely AI work. All the tests pass, and the library
+still works inside one actual project, and its test also pass. But, no warranties.
 
 Features
 ========
@@ -16,8 +34,7 @@ Features
 - entry eviction and expiration without a separate thread
 - capable of maintaining huge amounts of cache memory
 - suitable for tiny/small entries with low overhead using the chunked implementation
-- runs with Java 8 and Java 11 - support for Java 7 and earlier has been dropped with version 0.7.0
-- to build OHC from source, Java 11 or newer (tested with Java 11 + 15) is required
+- runs with Java 25, requires Java 25 to build from source
 
 Performance
 ===========
