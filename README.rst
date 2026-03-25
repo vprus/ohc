@@ -207,7 +207,7 @@ Building from source
 
 Clone the git repo to your local machine. Either use the stable master branch or a release tag.
 
-``git clone https://github.com/snazy/ohc.git``
+``git clone https://github.com/vprus/ohc.git``
 
 You need OpenJDK 11 or newer to build from source. Just execute
 

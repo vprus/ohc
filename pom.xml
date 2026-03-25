@@ -13,7 +13,7 @@
         <name>Robert Stupp, Koeln, Germany, robert-stupp.de</name>
         <url>http://caffinitas.org/</url>
     </organization>
-    <url>http://caffinitas.org/</url>
+    <url>https://github.com/vprus/ohc</url>
 
     <inceptionYear>2014</inceptionYear>
     <developers>
@@ -44,22 +44,18 @@
 
     <distributionManagement>
         <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
         </snapshotRepository>
-        <repository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
     </distributionManagement>
     <scm>
-        <connection>scm:git:https://github.com/snazy/ohc.git</connection>
-        <developerConnection>scm:git:https://github.com/snazy/ohc.git</developerConnection>
-        <url>https://github.com/snazy/ohc</url>
+        <connection>scm:git:https://github.com/vprus/ohc.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/vprus/ohc.git</developerConnection>
+        <url>https://github.com/vprus/ohc</url>
     </scm>
     <issueManagement>
-        <system>Github</system>
-        <url>https://github.com/snazy/ohc/issues</url>
+        <system>GitHub</system>
+        <url>https://github.com/vprus/ohc/issues</url>
     </issueManagement>
 
     <modules>
@@ -92,6 +88,7 @@
         <version.org.apache.logging.log4j>2.16.0</version.org.apache.logging.log4j>
         <version.org.codehaus.mojo.cobertura-maven-plugin>2.7</version.org.codehaus.mojo.cobertura-maven-plugin>
         <version.org.codehaus.mojo.exec-maven-plugin>3.0.0</version.org.codehaus.mojo.exec-maven-plugin>
+        <version.org.sonatype.central.central-publishing-maven-plugin>0.10.0</version.org.sonatype.central.central-publishing-maven-plugin>
         <version.org.slf4j>1.7.32</version.org.slf4j>
         <version.org.testng>7.4.0</version.org.testng>
         <version.org.hamcrest>2.2</version.org.hamcrest>
@@ -365,6 +362,17 @@
                     </plugin>
 
                     <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>${version.org.sonatype.central.central-publishing-maven-plugin}</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <autoPublish>false</autoPublish>
+                        </configuration>
+                    </plugin>
+
+                    <plugin>
                         <groupId>external.atlassian.jgitflow</groupId>
                         <artifactId>jgitflow-maven-plugin</artifactId>
                         <version>${version.external.atlassian.jgitflow.jgitflow-maven-plugin}</version>
@@ -382,6 +390,9 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
                         <version>${version.org.apache.maven.plugins.maven-gpg-plugin}</version>
+                        <configuration>
+                            <keyname>8C920EDDA0A14E47B7E2B6A5C156A0D76D9504B3</keyname>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -397,9 +408,9 @@
         </profile>
 
         <!--
-        Release deployment procecure:
+        Release deployment procedure:
 
-            . ~/devel/java11-openjdk.sh
+            Configure ~/.m2/settings.xml with a Central Portal token under server id "central".
             mvn clean
             mvn jgitflow:release-start -Pdeploy
             mvn jgitflow:release-finish -Pdeploy
@@ -407,12 +418,12 @@
 
             ALTERNATIVE:
 
-            . ~/devel/java11-openjdk.sh
+            Configure ~/.m2/settings.xml with a Central Portal token under server id "central".
             mvn clean
             mvn jgitflow:release-start -Pdeploy
             mvn jgitflow:release-finish -Pdeploy -DkeepBranch=true -DnoDeploy=true
             (...)
-            mvn deploy
+            mvn deploy -Pdeploy
             (git push required unless -DpushReleases=true on release-finish)
 
         -->

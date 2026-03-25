@@ -18,7 +18,7 @@
         <name>Robert Stupp, Koeln, Germany, robert-stupp.de</name>
         <url>http://caffinitas.org/</url>
     </organization>
-    <url>http://caffinitas.org/</url>
+    <url>https://github.com/vprus/ohc</url>
 
     <inceptionYear>2014</inceptionYear>
     <developers>
@@ -49,22 +49,18 @@
 
     <distributionManagement>
         <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
         </snapshotRepository>
-        <repository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
-        </repository>
     </distributionManagement>
     <scm>
-        <connection>scm:git:https://github.com/snazy/ohc.git</connection>
-        <developerConnection>scm:git:https://github.com/snazy/ohc.git</developerConnection>
-        <url>https://github.com/snazy/ohc</url>
+        <connection>scm:git:https://github.com/vprus/ohc.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/vprus/ohc.git</developerConnection>
+        <url>https://github.com/vprus/ohc</url>
     </scm>
     <issueManagement>
-        <system>Github</system>
-        <url>https://github.com/snazy/ohc</url>
+        <system>GitHub</system>
+        <url>https://github.com/vprus/ohc/issues</url>
     </issueManagement>
 
     <dependencies>
