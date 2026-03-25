@@ -5,12 +5,12 @@
     <parent>
         <groupId>com.vladimirprus.ohc</groupId>
         <artifactId>ohc-parent</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
         <relativePath>..</relativePath>
     </parent>
 
     <artifactId>ohc-core</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0</version>
 
     <name>OHC core</name>
     <description>Off-Heap concurrent hash map intended to store GBs of serialized data</description>
